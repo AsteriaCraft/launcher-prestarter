@@ -1,0 +1,44 @@
+@forward "colors";
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("$lib/assets/fonts/Inter-Bold.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Kharkiv";
+  font-style: normal;
+  font-weight: normal;
+  font-display: swap;
+  src: url("$lib/assets/fonts/Kharkiv.ttf") format("truetype");
+}
+
+:root {
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  color: $text-primary;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Inter", "Kharkiv", sans-serif;
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  color: $text-primary;
+  background: transparent;
+}
+
+html {
+  background: transparent !important;
+}
