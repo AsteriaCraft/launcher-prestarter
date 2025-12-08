@@ -1,0 +1,54 @@
+name: publish
+
+on:
+  push:
+    branches:
+      - release
+
+permissions:
+  contents: write
+
+jobs:
+  publish-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build Windows exe
+        run: yarn tauri build --target x86_64-pc-windows-msvc
+
+      - name: Read app version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p \"JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version\")" >> \"$GITHUB_OUTPUT\"
+
+      - name: Create or update GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: v${{ steps.version.outputs.version }}
+          name: Prestarter v${{ steps.version.outputs.version }}
+          body: Windows build generated from the release branch.
+          draft: false
+          prerelease: false
+          allowUpdates: true
+          replaceArtifacts: true
+          artifacts: src-tauri/target/release/Prestarter.exe
+          artifactContentType: application/octet-stream
