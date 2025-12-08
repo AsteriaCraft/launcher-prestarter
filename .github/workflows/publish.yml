@@ -51,6 +51,6 @@ jobs:
           draft: false
           prerelease: false
           allowUpdates: true
-          replaceArtifacts: true
-          artifacts: src-tauri/target/release/Prestarter.exe
+          replacesArtifacts: true
+          artifacts: src-tauri/target/x86_64-pc-windows-msvc/release/Prestarter.exe
           artifactContentType: application/octet-stream
