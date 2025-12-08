@@ -37,7 +37,9 @@ jobs:
       - name: Read app version
         id: version
         shell: bash
-        run: echo "version=$(node -p \"JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json','utf8')).version\")" >> \"$GITHUB_OUTPUT\"
+        run: |
+          version=$(node -pe "require('./src-tauri/tauri.conf.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Create or update GitHub release
         uses: ncipollo/release-action@v1
