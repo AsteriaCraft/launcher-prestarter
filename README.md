@@ -58,3 +58,31 @@ yarn
 ```bash
 yarn tauri icon PATH_TO_ICON_PNG
 ```
+
+## Релізи (Asterium)
+
+Реліз = push у гілку `release`. Workflow `.github/workflows/publish.yml` (лише Linux-раннери):
+
+1. бере версію з `src-tauri/tauri.conf.json` і **відмовляє, якщо тег `v<версія>` уже існує** ("bump the version"):
+   опублікований реліз ніколи не перезаписується - перед кожним релізом підніміть версію в `tauri.conf.json`,
+   `package.json` і `src-tauri/Cargo.toml`;
+2. збирає `Prestarter.exe` для Windows на Linux (`scripts/ci/build-windows-exe.sh`, cargo-xwin; той самий скрипт
+   працює локально на будь-якому Linux або в `docker run ubuntu:24.04`);
+3. пише `SHA256SUMS.txt` і `release.json` (`scripts/ci/release-manifest.sh`: репозиторій, компонент `prestarter`,
+   тег, версія, канал, коміт, SHA-256 і розмір файлу), підписує `release.json` ключем Ed25519 із секрету
+   `RELEASE_SIGNING_KEY` (`scripts/ci/sign-release.sh`, з перевіркою проти `.github/release-signing.pub.pem`);
+4. створює draft, завантажує файли й публікує реліз як Latest (версія з `-rc.1` тощо - pre-release, не Latest).
+
+Без секрету реліз виходить **без підпису** з попередженням, і LaunchServer із модулем AsteriumReleases його не
+встановить. Ключ створює власник один раз: `scripts/make-release-signing-key.sh AsteriaCraft/launcher-prestarter
+prestarter` (секрет + публічний ключ для коміту + рядок для конфігу LaunchServer). Підписати непідписаний реліз
+офлайн ключем власника: завантажити його `release.json` у каталог, `RELEASE_SIGNING_KEY_FILE=key.pem
+scripts/ci/sign-release.sh <каталог>` і `gh release upload v<версія> <каталог>/release.json.sig` (доки для репозиторію
+не ввімкнено immutable releases).
+
+Перевірити реліз вручну:
+
+```bash
+sha256sum -c SHA256SUMS.txt
+openssl pkeyutl -verify -rawin -pubin -inkey .github/release-signing.pub.pem -in release.json -sigfile release.json.sig
+```
