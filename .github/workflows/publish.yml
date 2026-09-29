@@ -1,3 +1,26 @@
+# Release pipeline for Prestarter.exe. Works the same in a PRIVATE repository and runs on Linux runners only.
+#
+# Trigger: a push to the `release` branch. The version comes from src-tauri/tauri.conf.json and the release is the
+# tag v<version>. A version that already has a tag or a published release is NEVER overwritten, and a version that is
+# not above the newest stable release is never published: the run fails and asks for a version bump. (The
+# LaunchServer module AsteriumReleases refuses a tag whose content changes and never goes below the highest version it
+# installed, and players must never get two different builds under one version.)
+#
+# Jobs, each with only the permissions it needs; no caches anywhere, so nothing another branch can write reaches a
+# signed binary:
+#   version  - read the version, refuse an existing tag/release or a version not above the newest  contents: read
+#   build    - cross-compile Prestarter.exe on Linux (scripts/ci/build-windows-exe.sh, cargo-xwin)   contents: read
+#   publish  - SHA256SUMS.txt + release.json, Ed25519 signature, draft -> upload -> publish        contents: write
+#              first-party steps only; the signing key is never available to the build job.
+#
+# Secret RELEASE_SIGNING_KEY (a REPOSITORY secret: org and environment secrets do not reach private repositories on
+# GitHub Free): ONE line of base64 of the Ed25519 private key in DER form (scripts/make-release-signing-key.sh stores it
+# so; sign-release.sh also accepts base64 of the PEM, or the PEM itself), with
+# its public half committed as .github/release-signing.pub.pem. Same rule as the runtime's release.yml: before the
+# public key is committed, a release without the secret is published UNSIGNED with a warning (a LaunchServer running
+# AsteriumReleases refuses to install it); once the public key is committed, a missing secret fails the run before
+# anything is published.
+# All actions are pinned to full commit SHAs (tag in the comment).
 name: publish
 
 on:
@@ -5,52 +28,174 @@ on:
     branches:
       - release
 
-permissions:
-  contents: write
+permissions: {}
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
 
 jobs:
-  publish-windows:
-    runs-on: windows-latest
-
+  version:
+    name: Version check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Build Windows exe
-        run: yarn tauri build --target x86_64-pc-windows-msvc
-
-      - name: Read app version
+      - name: Read the version and refuse to overwrite a published one
         id: version
-        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          version=$(node -pe "require('./src-tauri/tauri.conf.json').version")
+          version="$(jq -r .version src-tauri/tauri.conf.json)"
+          # The same rule as scripts/ci/release-manifest.sh and the LaunchServer module (no +build metadata), checked
+          # here so a bad version fails in seconds, not after the build.
+          num='(0|[1-9][0-9]*)'
+          ident='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          if ! [[ "$version" =~ ^$num\.$num\.$num(-$ident(\.$ident)*)?$ ]]; then
+            echo "::error::src-tauri/tauri.conf.json version '$version' is not MAJOR.MINOR.PATCH[-PRERELEASE]"
+            exit 1
+          fi
+          cargo_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' src-tauri/Cargo.toml | head -1)"
+          package_version="$(jq -r .version package.json)"
+          if [ "$cargo_version" != "$version" ] || [ "$package_version" != "$version" ]; then
+            echo "::warning::versions differ: tauri.conf.json $version, Cargo.toml $cargo_version, package.json $package_version (tauri.conf.json is used)"
+          fi
+          # Fails closed: only a definite 404 counts as "not released yet".
+          state="$(bash scripts/ci/tag-state.sh "$GH_REPO" "v$version")" || exit 1
+          if [ "$state" != absent ]; then
+            echo "::error::v$version is already released. Bump the version in src-tauri/tauri.conf.json (and package.json, Cargo.toml): a published release is never overwritten."
+            exit 1
+          fi
+          # A stable release becomes GitHub's Latest: it must be higher than every stable release so far, or the
+          # /releases/latest link would go back a version (and LaunchServers, which never go below the highest
+          # version they installed, would refuse it). A failed lookup stops the run (bash -e).
+          tags="$(gh api "repos/$GH_REPO/git/matching-refs/tags/v" --paginate --jq '.[].ref | ltrimstr("refs/tags/")')"
+          newest="$({ grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' <<< "$tags" || true; } | sed 's/^v//' | sort -V | tail -n 1)"
+          core="${version%%-*}"
+          if [ -n "$newest" ] && { [ "$core" = "$newest" ] || [ "$(printf '%s\n' "$newest" "$core" | sort -V | tail -n 1)" != "$core" ]; }; then
+            echo "::error::v$version is not above the newest release v$newest. Bump the version in src-tauri/tauri.conf.json (and package.json, Cargo.toml) above it."
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$version"
 
-      - name: Create or update GitHub release
-        uses: ncipollo/release-action@v1
+  build:
+    name: Build Prestarter.exe (Linux, cargo-xwin)
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: v${{ steps.version.outputs.version }}
-          name: Prestarter v${{ steps.version.outputs.version }}
-          body: Windows build generated from the release branch.
-          draft: false
-          prerelease: false
-          allowUpdates: true
-          replacesArtifacts: true
-          artifacts: src-tauri/target/x86_64-pc-windows-msvc/release/Prestarter.exe
-          artifactContentType: application/octet-stream
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Toolchain (Rust stable, clang, lld, llvm)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends clang lld llvm
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build
+        run: bash scripts/ci/build-windows-exe.sh
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: prestarter-exe
+          path: dist/Prestarter.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Checksums, signature, release
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.version.outputs.version }}
+      TAG: v${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: prestarter-exe
+          path: dist
+
+      - name: SHA256SUMS.txt and release.json
+        run: bash scripts/ci/release-manifest.sh dist "$GITHUB_REPOSITORY" prestarter "$VERSION" "$GITHUB_SHA" Prestarter.exe
+
+      - name: Sign release.json (Ed25519)
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set +e
+          bash scripts/ci/sign-release.sh dist
+          rc=$?
+          set -e
+          if [ "$rc" = 3 ]; then
+            # Unsigned only before signing is set up. Once the public key is committed, a missing secret (deleted,
+            # renamed, not set in a new repository) stops the run here, before anything is published: a LaunchServer
+            # would refuse the unsigned release, and a published version is never published again.
+            if [ -f .github/release-signing.pub.pem ]; then
+              echo "::error file=.github/release-signing.pub.pem::RELEASE_SIGNING_KEY is not set, but .github/release-signing.pub.pem is committed. Nothing was published: set the secret (scripts/make-release-signing-key.sh), then re-run the failed jobs."
+              exit 1
+            fi
+            echo "::warning::RELEASE_SIGNING_KEY is not set: $TAG is published WITHOUT release.json.sig. A LaunchServer running AsteriumReleases will not install it. Create the key with scripts/make-release-signing-key.sh."
+          elif [ "$rc" != 0 ]; then
+            exit "$rc"
+          fi
+
+      - name: Publish (draft, upload, then publish as latest)
+        run: |
+          # Never overwrite: an existing tag fails the run. A draft left by an earlier failed run was never public
+          # and is replaced. The tag lookup fails closed (scripts/ci/tag-state.sh).
+          state="$(bash scripts/ci/tag-state.sh "$GH_REPO" "$TAG")" || exit 1
+          if [ "$state" != absent ]; then
+            echo "::error::$TAG is already released. Bump the version in src-tauri/tauri.conf.json: a published release is never overwritten."
+            exit 1
+          fi
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || true)" = "true" ]; then
+            echo "::notice::Replacing the unpublished draft $TAG left by an earlier failed run"
+            gh release delete "$TAG" --yes
+          fi
+          assets=(dist/Prestarter.exe dist/SHA256SUMS.txt dist/release.json)
+          signature="unsigned"
+          if [ -f dist/release.json.sig ]; then
+            assets+=(dist/release.json.sig)
+            signature="release.json.sig (Ed25519)"
+          fi
+          sha="$(cut -d' ' -f1 dist/SHA256SUMS.txt)"
+          notes="$(printf '%s\n' \
+            "Prestarter.exe built on Linux (cargo-xwin, x86_64-pc-windows-msvc) from ${GITHUB_SHA::7}." \
+            "" \
+            "SHA-256: \`$sha\`" \
+            "Signed manifest: release.json, signature: $signature." \
+            "Verify: \`sha256sum -c SHA256SUMS.txt\` and \`openssl pkeyutl -verify -rawin -pubin -inkey .github/release-signing.pub.pem -in release.json -sigfile release.json.sig\`.")"
+          # A -suffix version (0.3.0-rc.1) is a pre-release: never "latest", so production LaunchServers ignore it.
+          kind=(--latest)
+          case "$VERSION" in *-*) kind=(--prerelease --latest=false) ;; esac
+          gh release create "$TAG" "${assets[@]}" --draft --target "$GITHUB_SHA" --title "Prestarter $TAG" --notes "$notes" "${kind[@]}"
+          gh release edit "$TAG" --draft=false "${kind[@]}"
+          echo "Published $TAG ($signature)"
