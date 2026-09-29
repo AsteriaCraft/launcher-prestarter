@@ -75,12 +75,16 @@ yarn tauri icon PATH_TO_ICON_PNG
    `RELEASE_SIGNING_KEY` (`scripts/ci/sign-release.sh`, з перевіркою проти `.github/release-signing.pub.pem`);
 4. створює draft, завантажує файли й публікує реліз як Latest (версія з `-rc.1` тощо - pre-release, не Latest).
 
-Без секрету реліз виходить **без підпису** з попередженням, і LaunchServer із модулем AsteriumReleases його не
-встановить. Ключ створює власник один раз: `scripts/make-release-signing-key.sh AsteriaCraft/launcher-prestarter
-prestarter` (секрет + публічний ключ для коміту + рядок для конфігу LaunchServer). Підписати непідписаний реліз
-офлайн ключем власника: завантажити його `release.json` у каталог, `RELEASE_SIGNING_KEY_FILE=key.pem
-scripts/ci/sign-release.sh <каталог>` і `gh release upload v<версія> <каталог>/release.json.sig` (доки для репозиторію
-не ввімкнено immutable releases).
+Ключ створює власник один раз: `scripts/make-release-signing-key.sh AsteriaCraft/launcher-prestarter prestarter`
+(секрет + публічний ключ для коміту + рядок для конфігу LaunchServer). Поки `.github/release-signing.pub.pem` не
+закомічено, реліз без секрету виходить **без підпису** з попередженням (LaunchServer із модулем AsteriumReleases його
+не встановить). Щойно публічний ключ закомічено, відсутній секрет **зупиняє** запуск до публікації (як у
+`release.yml` рантайму): інакше версію було б "спалено" релізом, який жоден сервер не прийме.
+
+Офлайн-підпис ключем власника (секрету в репозиторії немає, `.github/release-signing.pub.pem` НЕ комітиться):
+завантажити `release.json` непідписаного релізу в каталог, `RELEASE_SIGNING_KEY_FILE=key.pem
+RELEASE_SIGNING_PUBKEY=release-signing.pub.pem scripts/ci/sign-release.sh <каталог>` і `gh release upload v<версія>
+<каталог>/release.json.sig` (доки для репозиторію не ввімкнено immutable releases).
 
 Перевірити реліз вручну:
 

@@ -15,8 +15,10 @@
 #
 # Secret RELEASE_SIGNING_KEY (a REPOSITORY secret: org and environment secrets do not reach private repositories on
 # GitHub Free): the Ed25519 private key PEM as ONE base64 line, created by scripts/make-release-signing-key.sh, with
-# its public half committed as .github/release-signing.pub.pem. Without the secret the release is published UNSIGNED
-# with a warning; a LaunchServer running AsteriumReleases then refuses to install it (gravit-docker README).
+# its public half committed as .github/release-signing.pub.pem. Same rule as the runtime's release.yml: before the
+# public key is committed, a release without the secret is published UNSIGNED with a warning (a LaunchServer running
+# AsteriumReleases refuses to install it); once the public key is committed, a missing secret fails the run before
+# anything is published.
 # All actions are pinned to full commit SHAs (tag in the comment).
 name: publish
 
@@ -52,8 +54,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           version="$(jq -r .version src-tauri/tauri.conf.json)"
-          if ! [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::src-tauri/tauri.conf.json version '$version' is not MAJOR.MINOR.PATCH"
+          # The same rule as scripts/ci/release-manifest.sh and the LaunchServer module (no +build metadata), checked
+          # here so a bad version fails in seconds, not after the build.
+          num='(0|[1-9][0-9]*)'
+          ident='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          if ! [[ "$version" =~ ^$num\.$num\.$num(-$ident(\.$ident)*)?$ ]]; then
+            echo "::error::src-tauri/tauri.conf.json version '$version' is not MAJOR.MINOR.PATCH[-PRERELEASE]"
             exit 1
           fi
           cargo_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' src-tauri/Cargo.toml | head -1)"
@@ -148,6 +154,13 @@ jobs:
           rc=$?
           set -e
           if [ "$rc" = 3 ]; then
+            # Unsigned only before signing is set up. Once the public key is committed, a missing secret (deleted,
+            # renamed, not set in a new repository) stops the run here, before anything is published: a LaunchServer
+            # would refuse the unsigned release, and a published version is never published again.
+            if [ -f .github/release-signing.pub.pem ]; then
+              echo "::error file=.github/release-signing.pub.pem::RELEASE_SIGNING_KEY is not set, but .github/release-signing.pub.pem is committed. Nothing was published: set the secret (scripts/make-release-signing-key.sh), then re-run the failed jobs."
+              exit 1
+            fi
             echo "::warning::RELEASE_SIGNING_KEY is not set: $TAG is published WITHOUT release.json.sig. A LaunchServer running AsteriumReleases will not install it. Create the key with scripts/make-release-signing-key.sh."
           elif [ "$rc" != 0 ]; then
             exit "$rc"
