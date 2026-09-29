@@ -14,7 +14,8 @@
 #              first-party steps only; the signing key is never available to the build job.
 #
 # Secret RELEASE_SIGNING_KEY (a REPOSITORY secret: org and environment secrets do not reach private repositories on
-# GitHub Free): the Ed25519 private key PEM as ONE base64 line, created by scripts/make-release-signing-key.sh, with
+# GitHub Free): ONE line of base64 of the Ed25519 private key in DER form (scripts/make-release-signing-key.sh stores it
+# so; sign-release.sh also accepts base64 of the PEM, or the PEM itself), with
 # its public half committed as .github/release-signing.pub.pem. Same rule as the runtime's release.yml: before the
 # public key is committed, a release without the secret is published UNSIGNED with a warning (a LaunchServer running
 # AsteriumReleases refuses to install it); once the public key is committed, a missing secret fails the run before
