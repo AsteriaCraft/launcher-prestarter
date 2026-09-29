@@ -1,13 +1,14 @@
 # Release pipeline for Prestarter.exe. Works the same in a PRIVATE repository and runs on Linux runners only.
 #
 # Trigger: a push to the `release` branch. The version comes from src-tauri/tauri.conf.json and the release is the
-# tag v<version>. A version that already has a tag or a published release is NEVER overwritten: the run fails and
-# asks for a version bump. (The LaunchServer module AsteriumReleases refuses a tag whose content changes, and players
-# must never get two different builds under one version.)
+# tag v<version>. A version that already has a tag or a published release is NEVER overwritten, and a version that is
+# not above the newest stable release is never published: the run fails and asks for a version bump. (The
+# LaunchServer module AsteriumReleases refuses a tag whose content changes and never goes below the highest version it
+# installed, and players must never get two different builds under one version.)
 #
 # Jobs, each with only the permissions it needs; no caches anywhere, so nothing another branch can write reaches a
 # signed binary:
-#   version  - read the version, refuse an existing tag/release                                   contents: read
+#   version  - read the version, refuse an existing tag/release or a version not above the newest  contents: read
 #   build    - cross-compile Prestarter.exe on Linux (scripts/ci/build-windows-exe.sh, cargo-xwin)   contents: read
 #   publish  - SHA256SUMS.txt + release.json, Ed25519 signature, draft -> upload -> publish        contents: write
 #              first-party steps only; the signing key is never available to the build job.
@@ -64,6 +65,16 @@ jobs:
           state="$(bash scripts/ci/tag-state.sh "$GH_REPO" "v$version")" || exit 1
           if [ "$state" != absent ]; then
             echo "::error::v$version is already released. Bump the version in src-tauri/tauri.conf.json (and package.json, Cargo.toml): a published release is never overwritten."
+            exit 1
+          fi
+          # A stable release becomes GitHub's Latest: it must be higher than every stable release so far, or the
+          # /releases/latest link would go back a version (and LaunchServers, which never go below the highest
+          # version they installed, would refuse it). A failed lookup stops the run (bash -e).
+          tags="$(gh api "repos/$GH_REPO/git/matching-refs/tags/v" --paginate --jq '.[].ref | ltrimstr("refs/tags/")')"
+          newest="$({ grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' <<< "$tags" || true; } | sed 's/^v//' | sort -V | tail -n 1)"
+          core="${version%%-*}"
+          if [ -n "$newest" ] && { [ "$core" = "$newest" ] || [ "$(printf '%s\n' "$newest" "$core" | sort -V | tail -n 1)" != "$core" ]; }; then
+            echo "::error::v$version is not above the newest release v$newest. Bump the version in src-tauri/tauri.conf.json (and package.json, Cargo.toml) above it."
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
