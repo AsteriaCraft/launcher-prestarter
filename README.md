@@ -65,7 +65,8 @@ yarn tauri icon PATH_TO_ICON_PNG
 
 1. бере версію з `src-tauri/tauri.conf.json` і **відмовляє, якщо тег `v<версія>` уже існує** ("bump the version"):
    опублікований реліз ніколи не перезаписується - перед кожним релізом підніміть версію в `tauri.conf.json`,
-   `package.json` і `src-tauri/Cargo.toml`;
+   `package.json` і `src-tauri/Cargo.toml`. Перевірка тегу (`scripts/ci/tag-state.sh`) зупиняє запуск і тоді, коли
+   API GitHub не відповів: "тегу немає" - лише точна відповідь 404;
 2. збирає `Prestarter.exe` для Windows на Linux (`scripts/ci/build-windows-exe.sh`, cargo-xwin; той самий скрипт
    працює локально на будь-якому Linux або в `docker run ubuntu:24.04`);
 3. пише `SHA256SUMS.txt` і `release.json` (`scripts/ci/release-manifest.sh`: репозиторій, компонент `prestarter`,
