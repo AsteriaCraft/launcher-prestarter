@@ -30,8 +30,9 @@ cat > "$out/inside.sh" <<'SCRIPT'
 set -uo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q >/dev/null
-# M2: what a desktop already has and the AppImage does not bundle; ca-certificates for HTTPS; python3 for the jar server.
-apt-get install -y -q --no-install-recommends ca-certificates libfontconfig1 libharfbuzz0b libfribidi0 libegl1 libgles2 python3 >/dev/null
+# M2: what a desktop already has and the AppImage does not bundle (the GL, EGL and GLES libraries come from the host's
+# graphics driver; linuxdeploy's excludelist never bundles them); ca-certificates for HTTPS; python3 for the jar server.
+apt-get install -y -q --no-install-recommends ca-certificates libfontconfig1 libharfbuzz0b libfribidi0 libgl1 libegl1 libgles2 python3 >/dev/null
 mkdir -p /www /work && cp /in/FxProbe.jar /www/Asterium.jar
 python3 -m http.server 8765 --bind 127.0.0.1 --directory /www >/dev/null 2>&1 &
 export APPIMAGE_EXTRACT_AND_RUN=1 ASTERIUM_PRESTARTER_NONINTERACTIVE=1 ASTERIUM_PRESTARTER_STORE=/work/store
