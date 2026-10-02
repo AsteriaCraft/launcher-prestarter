@@ -17,7 +17,8 @@
       ],
       "fixed": [
         "На комп'ютерах з ARM більше не ставиться застаріла Java.",
-        "Якщо лаунчер не може запуститися, Asterium показує причину і що зробити, а не закривається мовчки."
+        "Якщо лаунчер не може запуститися, Asterium показує причину і що зробити, а не закривається мовчки.",
+        "Якщо Windows не може передати Java назву папки з Asterium (наприклад, кирилицю при англійській мові системи), Asterium пояснює, як це виправити."
       ]
     },
     "en": {
@@ -33,7 +34,8 @@
       ],
       "fixed": [
         "ARM computers no longer get an outdated Java.",
-        "If the launcher cannot start, Asterium shows why and what to do instead of closing silently."
+        "If the launcher cannot start, Asterium shows why and what to do instead of closing silently.",
+        "If Windows cannot pass the name of Asterium's folder to Java (for example Cyrillic on an English system), Asterium explains how to fix it."
       ]
     }
   }

@@ -40,3 +40,7 @@ and the project uses [Semantic Versioning](https://semver.org/). Player-facing n
 - Archives were unpacked without protection against `../` paths; a downloaded JRE was never checked.
 - A missing WebView2 or display made the prestarter exit silently.
 - The progress throttle did not work; the window showed "v1.0.0 Alpha" instead of the real version.
+- Windows: from a folder whose name the ANSI code page cannot write (for example Cyrillic with an English
+  "Language for non-Unicode programs") Java failed with "Unable to access jarfile ???"; the prestarter now says
+  so and what to do (exit code 6) before downloading anything.
+- Windows: a virus scanner or the x64 emulator holding the fresh JRE's files open no longer fails the installation.

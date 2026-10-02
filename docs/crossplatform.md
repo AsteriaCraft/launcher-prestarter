@@ -206,7 +206,9 @@ main:
 
 ### 4.4 Інтерфейс
 
-- Розмір і стиль вікна без змін (512×300, без рамки, прозоре); вікно показується після першого кадру.
+- Розмір і стиль вікна без змін (512×300, без рамки, прозоре); вікно показується, коли сторінка відмалювала DOM і
+  завантажила шрифти й тло першого кадру (не більше 1,5 с). Не `requestAnimationFrame`: WebKit (Linux, macOS) у
+  прихованому вікні його не викликає - етап Build це показав (smoke: «the page did not report ready in 15 s»).
 - Стани українською (і be, en, pl, ru за мовою ОС): «Перевіряємо Java», «Завантажуємо Java · 45 % · 12,3 МБ/с»,
   «Встановлюємо Java», «Завантажуємо лаунчер», «Запускаємо Asterium».
 - Помилка - речення про причину, дія («Спробувати ще», «Відкрити журнали»), код помилки дрібно (для підтримки).
@@ -222,7 +224,7 @@ main:
   "app": {
     "macOSPrivateApi": true,                       // прозоре вікно на macOS (feature tauri/macos-private-api)
     "windows": [{ "label": "main", "create": false, "title": "Asterium", "visible": false, /* решта як була */ }],
-    "security": { "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:" }
+    "security": { "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:" }
   },
   "bundle": {
     "active": false,                               // збірка бандлів - лише явним --bundles у скриптах CI
@@ -235,7 +237,10 @@ main:
 ```
 
 `create: false`: вікно створює код (`app/mod.rs`), тож помилку WebView2/WebKitGTK можна зловити і перейти в режим без
-вікна, а не впасти в `expect`. Вікно приховане, доки фронтенд не намалює перший кадр і не викличе `ready`.
+вікна, а не впасти в `expect`. Вікно приховане, доки фронтенд не відмалює DOM, не завантажить шрифти й тло і не
+викличе `ready` (журнал: «the page is ready after N ms; showing the window»). `connect-src` дозволяє IPC Tauri
+(`ipc://localhost`, на Windows `http://ipc.localhost`); без нього кожен виклик спершу падав і йшов через
+`postMessage` (виявлено на етапі Build).
 
 Ім'я виконуваного файла після зміни `productName` скрипти збирання беруть з `mainBinaryName` або імені bin cargo і
 перевіряють; активи в `dist/` завжди отримують імена з [розділу 2](#2-артефакти).
@@ -513,7 +518,7 @@ environment `release`; PR-збирання без секретів.
 | Інтеграційні Rust | `src-tauri/tests/`, 5 раннерів | повний шлях без GUI проти локального HTTPS (тестовий CA) з `fake-java`: встановлення, оновлення JRE, копія jar, рання помилка і повтор, `setsid`, від'єднання |
 | Фронтенд | vitest + `svelte-check` | редуктор подій, прогрес, тексти станів |
 | Скрипти CI | bats/bash + `shellcheck` + `actionlint` | `release-manifest.sh` (метадані, старий формат), `make-dmg.sh`, `macos-signing.sh --self-test` |
-| Smoke релізних байтів | `smoke.yml` на рідних раннерах | кожен з 7 артефактів: GUI (знімок) → справжній Liberica → `java -jar` → FX-проба, що повторює обгортку Gravit (перезапуск з `-cp`, вихід через 3 с) і відкриває вікно з `WebView` (WebKit) → маркер і знімок; чисте середовище; Windows без WebView2; кирилиця в шляху; «голий» Linux з підказкою пакетів; macOS карантин, `spctl`, назва в Dock; Wayland |
+| Smoke релізних байтів | `smoke.yml` на рідних раннерах | кожен з 7 артефактів: GUI (знімок) → справжній Liberica → `java -jar` → FX-проба, що повторює обгортку Gravit (перезапуск з `-cp`, вихід через 3 с) і відкриває вікно з `WebView` (WebKit) → маркер і знімок; чисте середовище; Windows без WebView2; шлях не з ASCII, який Java читає, і відмова з кодом 6 для шляху, який кодова сторінка ANSI не записує; «голий» Linux з підказкою пакетів; macOS карантин, `spctl`, назва в Dock; Wayland |
 | AsteriumReleases | JUnit + e2e (`run-e2e.sh`, розділ X) | [ADR 0010](adr/0010-launchserver-variants-and-static-downloads.md) «Перевірка»: побайтові складені файли, nginx, `LauncherSignCheck` до і після рестарту, доповнення тегу, відкат через `since` |
 | Сайт | vitest, Playwright, axe, знімки | [ADR 0011](adr/0011-site-download-experience.md) «Перевірка» |
 | Інтеграція (наступний етап workflow) | контейнер з e2e LaunchServer | справжній `Prestarter-linux-x86_64` з CI-запуску лейну як актив тестового релізу → LaunchServer збирає `Asterium_linux` → запуск під Xvfb у контейнері з GTK: лаунчер (jar) стартує і питає сервер `LINUX_X86_64`; самооновлення на першому запуску, поки престартер щойно вийшов; фікстури сайту оновлюються розмірами і sha256 з того самого запуску |

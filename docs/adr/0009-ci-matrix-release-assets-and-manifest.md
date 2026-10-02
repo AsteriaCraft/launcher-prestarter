@@ -85,7 +85,7 @@
 
 | Артефакт | Раннер | Сценарій |
 |---|---|---|
-| `Prestarter.exe` + FX-проба | `windows-2025` | дописати jar, запустити, маркер, знімок; запуск із шляху з кирилицею; без WebView2 ([0006](0006-launching-the-launcher.md)) |
+| `Prestarter.exe` + FX-проба | `windows-2025` | дописати jar, запустити, маркер, знімок; запуск зі шляху не з ASCII, який кодова сторінка ANSI записує; відмова з кодом 6 для кирилиці при 1252; без WebView2 ([0006](0006-launching-the-launcher.md)) |
 | `Prestarter-windows-aarch64.exe` і `Prestarter.exe` + FX-проба | `windows-11-arm` | те саме; `os.arch=amd64`, WebView працює під емуляцією ([0004](0004-windows-arm64-uses-x64-jre.md)) |
 | `Prestarter-linux-x86_64` + FX-проба | `ubuntu-24.04` (Xvfb); контейнер Ubuntu 24.04 без GTK | маркер; у «голому» контейнері очікуваний код 127 |
 | `Prestarter-linux-aarch64` + FX-проба | `ubuntu-24.04-arm` (Xvfb) | маркер |
