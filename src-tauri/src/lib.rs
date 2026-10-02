@@ -12,6 +12,7 @@ pub mod jre;
 pub mod launch;
 pub mod net;
 pub mod platform;
+pub mod policy;
 pub mod store;
 
 use download::download_file;
