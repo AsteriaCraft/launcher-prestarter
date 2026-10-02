@@ -79,6 +79,9 @@ run_slice() { # <label> <arch prefix...>
   wait_pid "$pid" 900 || fail "[$label] the app did not finish"
   collect_store "$store" "macos/$label"
   [ "$EXIT_CODE" = 0 ] || fail "[$label] the app exited with $EXIT_CODE"
+  if grep -q "did not report ready" "$out/$label/prestarter-1.log"; then
+    fail "[$label] the window's page never reported its first frame (IPC or CSP problem)"
+  fi
   wait_file "$markers/fx-0.json" 120 || fail "[$label] the FX probe never reported"
   sleep 1
   screenshot "macos-$label-2-probe"

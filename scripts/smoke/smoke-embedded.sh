@@ -60,6 +60,9 @@ wait_pid "$pid" 900 || fail "[$label] the prestarter did not finish in 15 minute
 collect_store "$store" "$label/run-1"
 [ "$EXIT_CODE" = 0 ] || fail "[$label] the prestarter exited with $EXIT_CODE (logs in $SMOKE_OUT/$label/run-1)"
 log "[$label] first start finished in $(( $(date +%s) - started )) s with exit code 0"
+if [ "$mode" != no-webview ] && grep -q "did not report ready" "$SMOKE_OUT/$label/run-1/prestarter-1.log"; then
+  fail "[$label] the window's page never reported its first frame (IPC or CSP problem)"
+fi
 
 wait_file "$markers/fx-0.json" 180 || fail "[$label] the FX probe window never reported (see launcher-start.log)"
 screenshot "$label-2-probe"

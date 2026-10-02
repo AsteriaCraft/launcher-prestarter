@@ -61,6 +61,9 @@ case "$cwd" in
   *) fail "[$label] the launcher runs in $cwd, not in OWD or the home directory" ;;
 esac
 grep -q "wrapper outcome: Started" "$SMOKE_OUT/$label/run-1/prestarter-1.log" || fail "[$label] the wrapper was not watched"
+if grep -q "did not report ready" "$SMOKE_OUT/$label/run-1/prestarter-1.log"; then
+  fail "[$label] the window's page never reported its first frame (IPC or CSP problem)"
+fi
 
 log "[$label] second start (fast path)"
 ./Asterium.AppImage &
