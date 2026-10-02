@@ -66,7 +66,17 @@ mod tests {
         assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), "waiting");
         drop(first);
         assert_eq!(waiter.join().unwrap(), "acquired");
-        assert!(InstallLock::try_acquire(&path).unwrap().is_some());
+        // Free again once the second holder is gone. CI on macOS once found the lock still taken right after the
+        // waiter thread had been joined (the cause was not established; a child process spawned by a parallel test
+        // sharing the descriptor for a moment is one candidate), so the check gives the release up to 2 s.
+        let free = (0..100).any(|_| {
+            let taken = InstallLock::try_acquire(&path).unwrap().is_some();
+            if !taken {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            taken
+        });
+        assert!(free, "the lock stayed taken after both holders were dropped");
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
