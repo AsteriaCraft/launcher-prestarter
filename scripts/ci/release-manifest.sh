@@ -50,7 +50,7 @@ for spec in "$@"; do
   done
   [[ "$asset" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ && "$asset" != *..* ]] || { echo "invalid asset name: $asset" >&2; exit 2; }
   case "$asset" in release.json|release.json.sig|SHA256SUMS.txt) echo "reserved asset name: $asset" >&2; exit 2 ;; esac
-  [ -f "$asset" ] && [ ! -L "$asset" ] && [ -s "$asset" ] || { echo "missing or empty asset: $asset" >&2; exit 2; }
+  if [ ! -f "$asset" ] || [ -L "$asset" ] || [ ! -s "$asset" ]; then echo "missing or empty asset: $asset" >&2; exit 2; fi
   sha="$(sha256sum "$asset" | cut -d' ' -f1)"
   size="$(stat -c %s "$asset")"
   printf '%s  %s\n' "$sha" "$asset" >> SHA256SUMS.txt

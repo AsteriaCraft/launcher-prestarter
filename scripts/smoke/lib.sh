@@ -55,7 +55,7 @@ wait_pid() {
     waited=$((waited + 1))
   done
   # shellcheck disable=SC2034 # read by the caller
-  wait "$pid" && EXIT_CODE=0 || EXIT_CODE=$?
+  if wait "$pid"; then EXIT_CODE=0; else EXIT_CODE=$?; fi
 }
 
 # Full-screen screenshot into $SMOKE_OUT/<name>.png (best effort: a missing tool only logs).

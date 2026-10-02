@@ -13,7 +13,7 @@ appimage="${1:?AppImage}"
 label="${2:?label}"
 expected_arch="${3:?expected os.arch}"
 probe="${PROBE_JAR:-dist/fixtures/FxProbe.jar}"
-[ -s "$appimage" ] && [ -s "$probe" ] || fail "missing $appimage or $probe"
+if [ ! -s "$appimage" ] || [ ! -s "$probe" ]; then fail "missing $appimage or $probe"; fi
 trap stop_servers EXIT
 
 tmp="${RUNNER_TEMP:-/tmp}/smoke-$label-$$"

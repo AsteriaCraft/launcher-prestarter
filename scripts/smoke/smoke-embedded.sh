@@ -17,7 +17,7 @@ label="${2:?label}"
 expected_arch="${3:?expected os.arch}"
 mode="${4:-}"
 probe="${PROBE_JAR:-dist/fixtures/FxProbe.jar}"
-[ -s "$raw" ] && [ -s "$probe" ] || fail "missing $raw or $probe"
+if [ ! -s "$raw" ] || [ ! -s "$probe" ]; then fail "missing $raw or $probe"; fi
 trap stop_servers EXIT
 
 tmp="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/smoke-$label-$$"

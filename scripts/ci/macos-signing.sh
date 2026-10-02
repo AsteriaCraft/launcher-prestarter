@@ -49,7 +49,7 @@ if [ "$mode" = check-secrets ]; then
   exit 0
 fi
 
-[ -n "$mode" ] && [ -n "$app" ] && [ -n "$dmg" ] || usage
+if [ -z "$mode" ] || [ -z "$app" ] || [ -z "$dmg" ]; then usage; fi
 [ -d "$app/Contents/MacOS" ] || die "$app is not an app bundle"
 [ "$(uname -s)" = Darwin ] || die "macOS only"
 

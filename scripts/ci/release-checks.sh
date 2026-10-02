@@ -20,8 +20,9 @@ package_version="$(jq -r .version package.json)"
 num='(0|[1-9][0-9]*)'
 ident='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
 [[ "$version" =~ ^$num\.$num\.$num(-$ident(\.$ident)*)?$ ]] || fail "tauri.conf.json version '$version' is not MAJOR.MINOR.PATCH[-PRERELEASE]"
-[ "$cargo_version" = "$version" ] && [ "$package_version" = "$version" ] \
-  || fail "versions differ: tauri.conf.json $version, src-tauri/Cargo.toml $cargo_version, package.json $package_version"
+if [ "$cargo_version" != "$version" ] || [ "$package_version" != "$version" ]; then
+  fail "versions differ: tauri.conf.json $version, src-tauri/Cargo.toml $cargo_version, package.json $package_version"
+fi
 grep -q "^name = \"Prestarter\"" src-tauri/Cargo.toml || fail "src-tauri/Cargo.toml lost the Prestarter package name"
 cargo_lock_version="$(awk '/^name = "Prestarter"$/{getline; print}' src-tauri/Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')"
 [ "$cargo_lock_version" = "$version" ] || fail "src-tauri/Cargo.lock has Prestarter $cargo_lock_version, not $version (run cargo update -p Prestarter)"
