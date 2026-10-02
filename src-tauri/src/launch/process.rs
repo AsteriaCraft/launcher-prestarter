@@ -47,7 +47,7 @@ pub fn spawn_detached(spec: &Spawn<'_>) -> io::Result<Child> {
             command.pre_exec(crate::platform::unix::new_session);
         }
     }
-    command.spawn()
+    crate::platform::spawn_when_not_busy(&mut command)
 }
 
 /// Waits up to `timeout` for `child`; `None` means it is still running.

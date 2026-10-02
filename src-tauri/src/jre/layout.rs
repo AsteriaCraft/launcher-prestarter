@@ -78,7 +78,8 @@ pub fn run_java_version(home: &Path, os: Os, timeout: Duration) -> Result<String
         use std::os::windows::process::CommandExt;
         command.creation_flags(crate::platform::windows::NO_WINDOW_CREATION_FLAGS);
     }
-    let mut child = command.spawn().map_err(|e| LayoutError::JavaVersion(e.to_string()))?;
+    let mut child =
+        crate::platform::spawn_when_not_busy(&mut command).map_err(|e| LayoutError::JavaVersion(e.to_string()))?;
     let started = Instant::now();
     let status = loop {
         if let Some(status) = child.try_wait().map_err(|e| LayoutError::JavaVersion(e.to_string()))? {
