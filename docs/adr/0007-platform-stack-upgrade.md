@@ -30,7 +30,7 @@
    закріпленого коміту (`rev = "…"`, не `branch`), а не гілки.
 3. **reqwest з rustls** і системним сховищем сертифікатів (rustls-platform-verifier: на Windows і macOS - сховище
    ОС, на Linux - системні сертифікати), як в upstream 2.1.0 (reqwest 0.13). Набір, перевірений на етапі Build:
-   `reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "blocking", "http2",
+   `reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "blocking",
    "system-proxy"] }` і `rustls` з провайдером `ring` (встановлюється один раз на старті): типовий для reqwest 0.13
    провайдер aws-lc-rs потребував би крос-збирання C/asm для `aarch64-pc-windows-msvc` через xwin. Той самий `ring`
    рахує sha1/sha256 і перевіряє Ed25519 політики, тож другої криптобібліотеки немає. Наслідки: ELF без OpenSSL
@@ -47,7 +47,9 @@
    тримає в собі. Усі три кладуться в його кеш (`$XDG_CACHE_HOME/tauri`) з закріпленими URL і sha256
    (`scripts/ci/appimage-tools.lock`; плагін - з тегованого релізу `1-alpha-20250213-1`, не з `continuous`), а
    `tauri bundle --bundles appimage` виконується в контейнері з `--network none`: спроба щось завантажити ламає
-   збирання, а не проходить тихо.
+   збирання, а не проходить тихо. Етап Build показав ще одне завантаження: новий appimagetool у плагіні бере
+   runtime type 2 з `continuous`; тепер це runtime тегованого релізу `20251108` (AppImage/type2-runtime),
+   закріплений sha256 і переданий через `LDAI_RUNTIME_FILE`. Без мережі AppImage збирається (CI, 78,76 МіБ x86_64).
 7. **Вікно стартує прихованим** і показується після першого кадру; версія в інтерфейсі - з `getVersion()`.
 8. **Мови інтерфейсу престартера** - ті самі, що в рантаймі: be, en, pl, ru, uk; вибір за мовою ОС
    (`sys-locale`), запасна - en. Тексти коротких станів («Завантажуємо Java», «Встановлюємо», «Запускаємо лаунчер»,
@@ -58,6 +60,10 @@
    (команда, середовище, процес, рання помилка), `store/` (шляхи, `state.json`, блокування, журнали), `net/`
    (HTTP-клієнт, політика хостів, loopback-перевизначення), `platform/` (windows, linux, macos), `i18n/`; фронтенд -
    `src/lib/{components,config,i18n,types,utils}`.
+10. **`cargo deny`**: єдиний виняток - RUSTSEC-2024-0370 (`proc-macro-error` unmaintained), який приходить лише як
+    proc-macro gtk-rs 0.18 через Linux-стек Tauri; у бінарник не потрапляє; перевіряється при кожному оновленні
+    Tauri (`src-tauri/deny.toml`).
+11. **HTTP/2 вимкнено** в reqwest: три хости, кілька запитів на запуск, а `h2` лише збільшує бінарник.
 
 ## Наслідки
 

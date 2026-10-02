@@ -156,3 +156,6 @@ HeroUI Modal на десктопі, нижній Sheet на телефоні; ф
 5. **Linux:** у «голій» системі без GTK 3/libXtst престартер сам називає пакети ([0006](0006-launching-the-launcher.md));
    FAQ показує ту саму команду встановлення, що й вікно престартера (одне джерело: таблиця пакетів у
    `docs/crossplatform.md` розділ 7.2).
+6. **Вимоги Linux по форматах** (виміряно на етапі Build, [0002](0002-linux-formats-and-default.md)): один файл -
+   glibc 2.34+, AppImage - glibc 2.35+ (не RHEL 9 і Fedora 35). Контракт отримує `LauncherMinimumOs.Glibc235`,
+   а рядок AppImage у матриці - `minimumOs: "glibc-2.35"`.

@@ -1,6 +1,6 @@
 # ADR 0002. Linux: один файл і AppImage, AppImage за замовчуванням
 
-- Статус: запропоновано (етап Design, 2026-10-02)
+- Статус: запропоновано (етап Design, 2026-10-02); уточнено на етапі Build (див. «Виміряно на етапі Build»)
 - Рішення власника: на Linux є і один виконуваний файл (бінарник з jar, потребує системного WebKitGTK), і AppImage
   (самодостатній, для дистрибутивів без WebKitGTK).
 - Пов'язані: [0001](0001-artifact-matrix-and-jar-delivery.md), [0006](0006-launching-the-launcher.md),
@@ -71,3 +71,14 @@
 - Контейнер «голий Ubuntu 24.04» (як M1/M2 в Understand): AppImage з мінімальним набором бібліотек працює, один файл
   виходить з кодом 127 (зафіксована поведінка, на неї посилається FAQ).
 - weston headless: знімок вікна одного файла на Wayland без патча tao.
+
+## Виміряно на етапі Build (2026-10-02, CI 37046721983)
+
+- Один файл: `GLIBC_2.34` (x86_64 і aarch64, `objdump -T`), без `libssl`/`libcrypto` (`readelf -d`); серед
+  NEEDED тепер і `libdbus-1.so.3` (Tauri). 8 443 200 B (x86_64), 7 764 464 B (aarch64).
+- **AppImage потребує glibc 2.35**, а не 2.34: `libwebkit2gtk-4.1.so.0`, `libjavascriptcoregtk-4.1.so.0` і
+  `libcairo.so.2` з Ubuntu 22.04 мають символи `GLIBC_2.35`. Отже AppImage працює на Ubuntu 22.04+, Debian 12+,
+  Fedora 36+, Mint 21+, Arch, але не на RHEL/Alma/Rocky 9 і Fedora 35 (там - один файл з системним WebKitGTK).
+  Нижчу межу дала б лише збірка на старішій базі, де немає WebKitGTK 4.1, тож межа 2.35 лишається; CI друкує її
+  щоразу (`build-linux.sh verify`). Сайт показує для AppImage «glibc 2.35+» ([0011](0011-site-download-experience.md)).
+- AppImage: 82 487 800 B (x86_64), 80 468 488 B (aarch64), зібрано з `--network none`.

@@ -35,7 +35,7 @@
 | Питання | Рішення | ADR |
 |---|---|---|
 | Як jar лаунчера потрапляє в кожен формат | Windows і один файл Linux - LaunchServer дописує jar до сирого престартера (як сьогодні `Asterium.exe`); AppImage і macOS - статичні збірки CI без jar, престартер завантажує `Asterium.jar` у своє сховище і запускає копію | [0001](adr/0001-artifact-matrix-and-jar-delivery.md) |
-| Linux | обидва формати для x86_64 і aarch64; сайт за замовчуванням пропонує AppImage; мінімум glibc 2.34 | [0002](adr/0002-linux-formats-and-default.md) |
+| Linux | обидва формати для x86_64 і aarch64; сайт за замовчуванням пропонує AppImage; мінімум glibc 2.34 для одного файла і 2.35 для AppImage (виміряно на етапі Build) | [0002](adr/0002-linux-formats-and-default.md) |
 | macOS | universal `.app` у DMG (`dmgbuild`, вікно з інструкцією); ad hoc зараз; Developer ID + нотаризація + staple за п'ятьма секретами в environment `release`; macOS 11+ | [0003](adr/0003-macos-delivery-and-signing.md) |
 | Windows ARM64 | JRE x64 під емуляцією (у нативній jre-full немає WebKit JavaFX); тому гравцям на ARM - той самий `Asterium.exe`, нативна ARM-збірка лише будується і тестується, доки не з'явиться нативна JRE з WebKit | [0004](adr/0004-windows-arm64-uses-x64-jre.md) |
 | JRE | правильна архітектура API (`arch=arm`), перевірка sha1 і розміру, аварійна таблиця з sha256, атомарне встановлення версіями поруч, перевірка оновлень раз на 7 днів з кнопкою «Грати зараз», власне сховище в `%LOCALAPPDATA%`/XDG/Application Support | [0005](adr/0005-jre-acquisition-and-local-store.md) |
@@ -79,17 +79,18 @@
 
 | Ціль | Актив GitHub (вхід або готовий файл) | Що завантажує гравець | Jar | Розмір* | Варіант оновлення | Потрібно на машині гравця |
 |---|---|---|---|---|---|---|
-| Windows x64 | `Prestarter.exe` | `https://launcher.asterium.pro/Asterium.exe` | вбудований | ~13,3 МБ | `EXE_WINDOWS_X86_64` | Windows 10/11 64-bit, WebView2 (у Windows 11 є; без нього - режим без вікна) |
-| Windows ARM64 | `Prestarter-windows-aarch64.exe` (лише будується і тестується) | поки `…/Asterium.exe` (x64 під емуляцією); `…/Asterium_arm64.exe` - після переходу на нативну JRE | вбудований | ~13,3 МБ | `EXE_WINDOWS_X86_64` | Windows 11 on ARM (емуляція x64); Windows 10 on ARM не підтримується |
-| Linux x64, один файл | `Prestarter-linux-x86_64` | `…/Asterium_linux` | вбудований | ~14,6 МБ | `LINUX_X86_64` | glibc 2.34+, WebKitGTK 4.1, GTK 3, libXtst, ALSA |
-| Linux ARM64, один файл | `Prestarter-linux-aarch64` | `…/Asterium_linux_arm64` | вбудований | ~14-15 МБ | `LINUX_ARM64` | те саме |
-| Linux x64, AppImage | `Asterium-linux-x86_64.AppImage` | `…/downloads/Asterium-linux-x86_64.AppImage` | копія в сховищі | 83,4 МБ | `JAR` | glibc 2.34+, FUSE (або `--appimage-extract-and-run`), fontconfig, harfbuzz, fribidi, EGL, GLES2; для лаунчера GTK 3, libXtst, ALSA |
-| Linux ARM64, AppImage | `Asterium-linux-aarch64.AppImage` | `…/downloads/Asterium-linux-aarch64.AppImage` | копія в сховищі | ~80-85 МБ | `JAR` | те саме |
-| macOS universal | `Asterium-macos-universal.dmg` | `…/downloads/Asterium-macos-universal.dmg` | копія в сховищі | вимірює CI | `JAR` | macOS 11+, Intel або Apple Silicon |
+| Windows x64 | `Prestarter.exe` | `https://launcher.asterium.pro/Asterium.exe` | вбудований | ~17,9 МБ (9 370 624 B + jar) | `EXE_WINDOWS_X86_64` | Windows 10/11 64-bit, WebView2 (у Windows 11 є; без нього - режим без вікна) |
+| Windows ARM64 | `Prestarter-windows-aarch64.exe` (лише будується і тестується) | поки `…/Asterium.exe` (x64 під емуляцією); `…/Asterium_arm64.exe` - після переходу на нативну JRE | вбудований | ~16,7 МБ (8 227 840 B + jar) | `EXE_WINDOWS_X86_64` | Windows 11 on ARM (емуляція x64); Windows 10 on ARM не підтримується |
+| Linux x64, один файл | `Prestarter-linux-x86_64` | `…/Asterium_linux` | вбудований | ~17,0 МБ (8 443 200 B + jar) | `LINUX_X86_64` | glibc 2.34+, WebKitGTK 4.1, GTK 3, D-Bus, libXtst, ALSA |
+| Linux ARM64, один файл | `Prestarter-linux-aarch64` | `…/Asterium_linux_arm64` | вбудований | ~16,3 МБ (7 764 464 B + jar) | `LINUX_ARM64` | те саме |
+| Linux x64, AppImage | `Asterium-linux-x86_64.AppImage` | `…/downloads/Asterium-linux-x86_64.AppImage` | копія в сховищі | 82 487 800 B | `JAR` | glibc 2.35+ (бібліотеки WebKitGTK і cairo з Ubuntu 22.04), FUSE (або `--appimage-extract-and-run`), fontconfig, harfbuzz, fribidi, EGL, GLES2; для лаунчера GTK 3, libXtst, ALSA |
+| Linux ARM64, AppImage | `Asterium-linux-aarch64.AppImage` | `…/downloads/Asterium-linux-aarch64.AppImage` | копія в сховищі | 80 468 488 B | `JAR` | те саме |
+| macOS universal | `Asterium-macos-universal.dmg` | `…/downloads/Asterium-macos-universal.dmg` | копія в сховищі | 7 922 824 B | `JAR` | macOS 11+, Intel або Apple Silicon |
 | будь-яка ОС | - | `…/Asterium.jar` | сам jar | ~8,5 МБ | `JAR` | своя Java 21+ з JavaFX |
 
-\* Розміри з вимірів Understand ([ADR 0001](adr/0001-artifact-matrix-and-jar-delivery.md)); файли з вбудованим jar =
-сирий престартер + jar (~8,5 МБ). Точні значення пише `release.json` і `downloads.json`.
+\* Розміри виміряно в CI етапу Build (запуск 37046721983, коміт 869372e); файли з вбудованим jar = сирий
+престартер + jar (~8,5 МБ). Сирий престартер 0.3.0 удвічі більший за 0.2.0 (4,8 МБ): rustls + ring + корені Mozilla,
+Tauri 2.12, перевірка jar і розпакування, `panic = "unwind"`. Точні значення пише `release.json` і `downloads.json`.
 
 Імена: `Prestarter-*` - вхід для LaunchServer (не для гравців), `Asterium-*` - готове завантаження. Архітектури в
 іменах файлів - як у Rust і Liberica (`x86_64`, `aarch64`, `universal`); сайт показує гравцю `x64`, `ARM64`.
@@ -298,7 +299,7 @@ export const LauncherArch = { X64: "x64", Arm64: "arm64", Universal: "universal"
 export const LauncherFormat = { Exe: "exe", Binary: "binary", AppImage: "appimage", Dmg: "dmg" } as const;
 export const LauncherJarDelivery = { Embedded: "embedded", Fetched: "fetched" } as const;
 export const LauncherWebview = { WebView2: "webview2", WkWebView: "wkwebview", WebKitGtk: "webkitgtk-4.1", Bundled: "bundled" } as const;
-export const LauncherMinimumOs = { Windows10: "windows-10", MacOs11: "macos-11", Glibc234: "glibc-2.34" } as const;
+export const LauncherMinimumOs = { Windows10: "windows-10", MacOs11: "macos-11", Glibc234: "glibc-2.34", Glibc235: "glibc-2.35" } as const;
 export const LinuxDistro = { Debian: "debian", Fedora: "fedora", Arch: "arch" } as const;
 export const LauncherComponent = { Launcher: "launcher", Installer: "installer" } as const;
 export const GraphicsApi = { OpenGl: "opengl", Vulkan: "vulkan" } as const;
@@ -364,7 +365,7 @@ LauncherChangelogSchema = z.object({ items: z.array(LauncherChangelogEntrySchema
 |---|---|---|
 | Windows | Windows 10 або 11, 64-bit (x64 або ARM64); WebView2 (у Windows 10 з 1803 і Windows 11 - є) | документація Tauri (WebView2); платформи JRE 25 (лейн звіряє зі сторінкою підтримуваних конфігурацій BellSoft) |
 | macOS | macOS 11 Big Sur, Intel або Apple Silicon | `LC_BUILD_VERSION minos=11.0` у `bin/java` Liberica (виміряно); Tauri за замовчуванням 10.13 |
-| Linux | glibc 2.34+ (Ubuntu 22.04+, Debian 12+, Fedora 35+, RHEL 9+, Mint 21+, Arch); x86_64 або aarch64; X11 або Wayland (XWayland); GTK 3, libXtst, ALSA; один файл - WebKitGTK 4.1; AppImage - FUSE | `objdump -T` (виміряно `GLIBC_2.34`), M1-M3 |
+| Linux | один файл: glibc 2.34+ (Ubuntu 22.04+, Debian 12+, Fedora 35+, RHEL 9+, Mint 21+, Arch); AppImage: glibc 2.35+ (Ubuntu 22.04+, Debian 12+, Fedora 36+, Mint 21+, Arch; не RHEL 9, виміряно на етапі Build); x86_64 або aarch64; X11 або Wayland (XWayland); GTK 3, libXtst, ALSA; один файл - WebKitGTK 4.1; AppImage - FUSE | `objdump -T` (виміряно `GLIBC_2.34`), M1-M3 |
 | усі | інтернет для першого запуску (Java ~120-150 МБ, лаунчер ~8 МБ, клієнт сервера); Java ставиться автоматично | - |
 
 Назви пакетів для Linux (`packages`): Debian/Ubuntu - `libwebkit2gtk-4.1-0 libgtk-3-0 libxtst6 libasound2`

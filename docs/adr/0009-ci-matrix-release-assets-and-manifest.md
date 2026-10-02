@@ -65,6 +65,9 @@
 
 - Windows збирається на Linux, як сьогоднішній реліз (той самий скрипт локально і в CI); запуск перевіряється на
   справжній Windows у smoke. `scripts/ci/build-windows-exe.sh` отримує параметр цілі замість вшитого x86_64.
+  Для ARM64 (етап Build): `ring` збирає свій C-код для `aarch64-pc-windows-msvc` звичайним `clang`, а cargo-xwin
+  передає шляхи CRT/SDK у синтаксисі clang-cl (`/imsvc`); `scripts/ci/clang-msvc-wrapper.sh` перекладає їх у
+  `-isystem`. Режим `clang` самого cargo-xwin не підходить: він завантажує незакріплений сторонній MSVC sysroot.
 - Linux збирається в контейнері `ubuntu:22.04`, закріпленому дайджестом: стеля glibc 2.34 не залежить від образу
   раннера (GitHub тримає два LTS, і `ubuntu-22.04` зникне після виходу 26.04), збирання відтворюється локально
   тим самим `scripts/ci/build-linux.sh`, а крок AppImage справді без мережі (`docker run --network none`).
