@@ -1,6 +1,6 @@
 # ADR 0003. macOS: universal `.app` у DMG, без підпису Apple зараз, Developer ID і нотаризація за секретами
 
-- Статус: запропоновано (етап Design, 2026-10-02)
+- Статус: запропоновано (етап Design, 2026-10-02); переглянуто після рецензії дизайну 2026-10-02 (див. «Ревізія»)
 - Рішення власника: macOS universal (Intel + Apple Silicon); поки без підпису, з чіткою інструкцією для гравців
   (System Settings → Privacy & Security → Open Anyway); підпис Developer ID і нотаризація підготовлені в CI за
   секретами `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` і
@@ -40,19 +40,24 @@
    «Open Anyway» (кнопка з'являється після першої спроби і доступна близько години) → пароль або Touch ID → «Open».
    На macOS 11-14 також працює Control-клік → «Відкрити». Інструкція - на сайті ([0011](0011-site-download-experience.md))
    і на картинці в DMG.
-5. **З секретами (пізніше, без змін коду):** скрипт `scripts/ci/macos-signing.sh` вмикає підпис, коли всі п'ять
-   секретів є:
-   - `APPLE_CERTIFICATE` (base64 `.p12`) і `APPLE_CERTIFICATE_PASSWORD` - Tauri імпортує сертифікат у тимчасовий
-     keychain; `APPLE_SIGNING_IDENTITY` скрипт визначає з імпортованого сертифіката
-     (`Developer ID Application: … (<TEAM_ID>)`) і перевіряє, що команда в ньому дорівнює `APPLE_TEAM_ID`;
-   - `APPLE_APP_PASSWORD` передається в Tauri як `APPLE_PASSWORD` (так його називає Tauri), разом з `APPLE_ID` і
-     `APPLE_TEAM_ID`;
-   - порядок: Tauri підписує `.app` (hardened runtime) і нотаризує + staple'ить його; потім `make-dmg.sh` збирає DMG,
-     `codesign` підписує DMG, `xcrun notarytool submit --wait` нотаризує, `xcrun stapler staple` прикріплює квиток;
-   - частина секретів без решти - помилка до збирання (а не тихий ad hoc), щоб напівналаштований підпис не
-     опублікував непідписаний реліз непомітно;
+5. **З секретами (пізніше, без змін коду):** окремий job `sign-macos` у `publish.yml` з `environment: release`
+   (лише він бачить секрети Apple) запускає `scripts/ci/macos-signing.sh` на `.app`, який зібрав `build.yml` (ad hoc,
+   без секретів), і перезбирає DMG:
+   - `APPLE_CERTIFICATE` (base64 `.p12`) і `APPLE_CERTIFICATE_PASSWORD` - скрипт імпортує сертифікат у тимчасовий
+     keychain, визначає ідентичність `Developer ID Application: … (<TEAM_ID>)` і перевіряє, що команда в ній
+     дорівнює `APPLE_TEAM_ID`;
+   - `APPLE_APP_PASSWORD` (пароль застосунку Apple ID) разом з `APPLE_ID` і `APPLE_TEAM_ID` іде в
+     `xcrun notarytool` (скрипт також експортує його як `APPLE_PASSWORD` - так його називає Tauri, якщо колись
+     повернемо підпис у сам `tauri build`);
+   - порядок: `codesign --force --options runtime --timestamp` для `.app` → `notarytool submit --wait` →
+     `stapler staple` `.app` → `make-dmg.sh` → `codesign` DMG → `notarytool submit --wait` → `stapler staple` DMG →
+     `spctl -a -vv` обох;
+   - частина секретів без решти - помилка до підпису (а не тихий ad hoc), щоб напівналаштований підпис не
+     опублікував непідписаний реліз непомітно; без жодного - `::notice::` і реліз з ad hoc;
    - секрети Apple живуть лише в GitHub Environment `release` (гілка `release`), не в репозиторії: PR і гілки їх не
-     бачать ([0009](0009-ci-matrix-release-assets-and-manifest.md)).
+     бачать. Окремий job потрібен тому, що job, який викликає повторно використовуваний workflow, не може мати
+     `environment`, а секрети середовища не передаються через `workflow_call` (рецензія,
+     [0009](0009-ci-matrix-release-assets-and-manifest.md)); smoke в `publish.yml` іде вже на підписаному DMG.
 6. **Шлях підпису перевіряється без Apple.** CI на гілках генерує в тимчасовому keychain самопідписаний сертифікат
    для підпису коду і проганяє `macos-signing.sh` у режимі `--self-test`: імпорт, `codesign --verify --strict --deep`,
    підпис DMG. Нотаризацію без облікового запису Apple перевірити неможливо; її крок має окремий `--dry-run`, що
@@ -63,9 +68,10 @@
    runtime (L5).
 8. **Транслокація не заважає**: престартер нічого не пише в бандл. Якщо він запущений з `/Volumes/…` або з
    `…/AppTranslocation/…`, вікно показує ненав'язливу підказку «Перетягніть Asterium у Програми» (один раз).
-9. **Dock.** Престартер передає JVM-обгортці `-Xdock:name=Asterium` і `-Xdock:icon=<бандл>/Contents/Resources/icon.icns`.
-   Справжній процес UI лаунчера - дочірня JVM, яку запускає `ClientLauncherWrapper` (`-cp <jar>`); їй ці аргументи
-   додає лише рантайм (callWrapper), тож Dock для вікна лаунчера - окреме завдання рантайму (див. відкриті питання).
+9. **Dock.** `-Xdock` обгортці Gravit нічого не дає (вона не створює вікна і виходить за 3 с). Престартер дописує
+   `-Xdock:name=Asterium` і `-Xdock:icon=…` у `JDK_JAVA_OPTIONS` дочірнього середовища, яке успадковують і JVM
+   лаунчера, і її перезапуск ([0006](0006-launching-the-launcher.md)); CI перевіряє назву процесу з вікном через
+   System Events. Якщо це не спрацює, Dock для вікна лаунчера лишається завданням рантайму (відкрите питання 9).
 
 ## Наслідки
 
@@ -94,3 +100,12 @@
 - Експеримент з Understand §8 один раз, як доказ для [0001](0001-artifact-matrix-and-jar-delivery.md): дописати jar до
   Mach-O і в `Contents/Resources` після підпису, зафіксувати вихід `codesign --verify`.
 - Знімок вікна престартера (`screencapture`) як артефакт CI.
+
+## Ревізія після рецензії (2026-10-02)
+
+| Знахідка рецензії | Що змінено |
+|---|---|
+| Секрети середовища не передаються в повторно використовуваний `build.yml` | підпис і нотаризація - окремий job `sign-macos` у `publish.yml` з `environment: release`; `build.yml` завжди ad hoc і без секретів |
+| `-Xdock` на обгортці не має ефекту | `JDK_JAVA_OPTIONS` у середовищі дочірнього процесу, перевірка в CI |
+| Rosetta на `macos-15` лише припущення | smoke ставить її явно (`softwareupdate --install-rosetta --agree-to-license`) і перевіряє `arch -x86_64 /usr/bin/true` |
+| AppImage і DMG не мають каналу оновлення | підписана політика обгортки ([0001](0001-artifact-matrix-and-jar-delivery.md)) |

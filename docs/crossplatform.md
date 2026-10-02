@@ -1,6 +1,7 @@
 # Престартер Asterium на всіх платформах: дизайн
 
-- **Статус:** етап Design, 2026-10-02. Лише документи: коду продукту в цьому коміті немає.
+- **Статус:** етап Design, 2026-10-02; переглянуто після рецензії дизайну того ж дня (розділ 16) перед етапом
+  Build. Рішення, змінені рецензією, позначені в ADR розділом «Ревізія».
 - **Задача власника (2026-10-02):** «я хочу щоб престартер був кросплатформою, він на таурі».
 - **Рішення власника (обов'язкові):** цілі Windows x64 і ARM64, Linux x64 і ARM64, macOS universal; на Linux і один
   файл (бінарник з jar, потребує системного WebKitGTK), і AppImage; macOS поки без підпису, з інструкцією для гравців,
@@ -26,6 +27,8 @@
 12. [Відкриті питання власнику](#12-відкриті-питання-власнику)
 13. [План робіт (лейни)](#13-план-робіт-лейни)
 14. [Докази і джерела](#14-докази-і-джерела)
+15. [Гра на кожній платформі](#15-гра-на-кожній-платформі)
+16. [Рецензія дизайну: як враховано](#16-рецензія-дизайну-як-враховано)
 
 ## 0. Рішення коротко
 
@@ -34,12 +37,13 @@
 | Як jar лаунчера потрапляє в кожен формат | Windows і один файл Linux - LaunchServer дописує jar до сирого престартера (як сьогодні `Asterium.exe`); AppImage і macOS - статичні збірки CI без jar, престартер завантажує `Asterium.jar` у своє сховище і запускає копію | [0001](adr/0001-artifact-matrix-and-jar-delivery.md) |
 | Linux | обидва формати для x86_64 і aarch64; сайт за замовчуванням пропонує AppImage; мінімум glibc 2.34 | [0002](adr/0002-linux-formats-and-default.md) |
 | macOS | universal `.app` у DMG (`dmgbuild`, вікно з інструкцією); ad hoc зараз; Developer ID + нотаризація + staple за п'ятьма секретами в environment `release`; macOS 11+ | [0003](adr/0003-macos-delivery-and-signing.md) |
-| Windows ARM64 | нативний престартер, але JRE x64 під емуляцією (у нативній jre-full немає WebKit JavaFX) | [0004](adr/0004-windows-arm64-uses-x64-jre.md) |
-| JRE | правильна архітектура API (`arch=arm`), перевірка sha1 і розміру, аварійна таблиця з sha256, атомарне встановлення версіями поруч, перевірка оновлень раз на 7 днів без блокування гри, власне сховище в `%LOCALAPPDATA%`/XDG/Application Support | [0005](adr/0005-jre-acquisition-and-local-store.md) |
-| Запуск лаунчера | передача аргументів, чисте середовище (знімок до `set_var`, без змінних AppImage), від'єднаний процес, видима рання помилка, робота без WebView2 | [0006](adr/0006-launching-the-launcher.md) |
+| Windows ARM64 | JRE x64 під емуляцією (у нативній jre-full немає WebKit JavaFX); тому гравцям на ARM - той самий `Asterium.exe`, нативна ARM-збірка лише будується і тестується, доки не з'явиться нативна JRE з WebKit | [0004](adr/0004-windows-arm64-uses-x64-jre.md) |
+| JRE | правильна архітектура API (`arch=arm`), перевірка sha1 і розміру, аварійна таблиця з sha256, атомарне встановлення версіями поруч, перевірка оновлень раз на 7 днів з кнопкою «Грати зараз», власне сховище в `%LOCALAPPDATA%`/XDG/Application Support | [0005](adr/0005-jre-acquisition-and-local-store.md) |
+| Запуск лаунчера | передача аргументів, чисте середовище (знімок до `set_var`, без змінних AppImage), від'єднаний процес; перевірки до запуску (jar, JRE, бібліотеки JavaFX на Linux); вбудований режим виходить одразу (самооновлення Gravit пише в той самий файл), режим копії читає журнал обгортки; робота без WebView2 | [0006](adr/0006-launching-the-launcher.md) |
 | Стек | Tauri 2.12, без форку tao, rustls, закріплений тулчейн, без зайвих залежностей, бандлер AppImage без мережі | [0007](adr/0007-platform-stack-upgrade.md) |
 | Як тестувати релізні байти без продакшну | чотири змінні середовища, адреси лише loopback | [0008](adr/0008-loopback-test-endpoints.md) |
-| CI | `ci.yml` на PR і гілках без секретів і без публікації; `publish.yml` лише на `release`; спільні `build.yml` і `smoke.yml`; smoke на рідних раннерах; `release.json` schema 1 з метаданими активів; атестація походження | [0009](adr/0009-ci-matrix-release-assets-and-manifest.md) |
+| Що робити, коли обгортка AppImage/DMG застаріє | підписана політика `prestarter-policy.json` (адреса jar, версія Java, мінімальна і найновіша версії обгортки), дзеркало в `downloads/` | [0001](adr/0001-artifact-matrix-and-jar-delivery.md) |
+| CI | модель гілок `main` → `release`; `ci.yml` на PR і гілках без секретів і без публікації; `publish.yml` лише на `release`, підпис macOS окремим job з environment `release`; спільні `build.yml` і `smoke.yml`; FX-проба на рідних раннерах; `release.json` schema 1 з метаданими активів; атестація походження | [0009](adr/0009-ci-matrix-release-assets-and-manifest.md) |
 | LaunchServer | AsteriumReleases 2.3.0: поля `launcherVariant`/`download`/`since`, виправлення «того самого тегу», конфіг Prestarter, URL і хеші варіантів, `downloads/` і `downloads.json` | [0010](adr/0010-launchserver-variants-and-static-downloads.md) |
 | Сайт | модалка з кожного «Завантажити», сторінка `/launcher` і `/launcher/changelog`, `/download` лишається редиректом, визначення ОС і CPU з Client Hints | [0011](adr/0011-site-download-experience.md) |
 | Changelog на сайті | підписаний актив `release-notes.json` (uk, en); для старих релізів - розбір опису релізу | [0012](adr/0012-launcher-changelog-source.md) |
@@ -76,7 +80,7 @@
 | Ціль | Актив GitHub (вхід або готовий файл) | Що завантажує гравець | Jar | Розмір* | Варіант оновлення | Потрібно на машині гравця |
 |---|---|---|---|---|---|---|
 | Windows x64 | `Prestarter.exe` | `https://launcher.asterium.pro/Asterium.exe` | вбудований | ~13,3 МБ | `EXE_WINDOWS_X86_64` | Windows 10/11 64-bit, WebView2 (у Windows 11 є; без нього - режим без вікна) |
-| Windows ARM64 | `Prestarter-windows-aarch64.exe` | `…/Asterium_arm64.exe` | вбудований | ~13,0 МБ | `EXE_WINDOWS_X86_64` (JRE x64) | Windows 11 on ARM (емуляція x64) |
+| Windows ARM64 | `Prestarter-windows-aarch64.exe` (лише будується і тестується) | поки `…/Asterium.exe` (x64 під емуляцією); `…/Asterium_arm64.exe` - після переходу на нативну JRE | вбудований | ~13,3 МБ | `EXE_WINDOWS_X86_64` | Windows 11 on ARM (емуляція x64); Windows 10 on ARM не підтримується |
 | Linux x64, один файл | `Prestarter-linux-x86_64` | `…/Asterium_linux` | вбудований | ~14,6 МБ | `LINUX_X86_64` | glibc 2.34+, WebKitGTK 4.1, GTK 3, libXtst, ALSA |
 | Linux ARM64, один файл | `Prestarter-linux-aarch64` | `…/Asterium_linux_arm64` | вбудований | ~14-15 МБ | `LINUX_ARM64` | те саме |
 | Linux x64, AppImage | `Asterium-linux-x86_64.AppImage` | `…/downloads/Asterium-linux-x86_64.AppImage` | копія в сховищі | 83,4 МБ | `JAR` | glibc 2.34+, FUSE (або `--appimage-extract-and-run`), fontconfig, harfbuzz, fribidi, EGL, GLES2; для лаунчера GTK 3, libXtst, ALSA |
@@ -112,14 +116,17 @@
 | Формат | Що питає лаунчер | Що завантажує | Куди пише |
 |---|---|---|---|
 | `Asterium.exe` | `EXE_WINDOWS_X86_64` | `Asterium.exe` | той самий файл |
-| `Asterium_arm64.exe` | `EXE_WINDOWS_X86_64` (JVM x64) | `Asterium.exe` | той самий файл; далі це x64-збірка ([ADR 0004](adr/0004-windows-arm64-uses-x64-jre.md)) |
+| `Asterium_arm64.exe` (поки не роздається) | `EXE_WINDOWS_X86_64` (JVM x64) | `Asterium.exe` | той самий файл уже на першому запуску; тому ARM-пристрої отримують `Asterium.exe` ([ADR 0004](adr/0004-windows-arm64-uses-x64-jre.md)) |
 | `Asterium_linux`, `Asterium_linux_arm64` | `LINUX_X86_64`, `LINUX_ARM64` | той самий варіант | той самий файл (біт виконання лишається) |
 | AppImage, DMG | `JAR` (файл закінчується на `.jar`) | `Asterium.jar` | копія в сховищі |
 | `Asterium.jar` | `JAR` | `Asterium.jar` | той самий файл |
 
 **Новий престартер доходить до гравця:** Windows і один файл Linux - разом з наступним збиранням лаунчера (як
 сьогодні); AppImage і DMG - лише новим завантаженням із сайту (лаунчер оновлює jar, а не обгортку). Тому обгортка
-має бути стабільною з першого релізу.
+має бути стабільною з першого релізу, а те, що може застаріти, вона бере з підписаної політики
+(`prestarter-policy.json`, [ADR 0001](adr/0001-artifact-matrix-and-jar-delivery.md)): адресу jar, версію Java, і
+дізнається, що є новіша обгортка (ненав'язливе повідомлення) або що її версія нижча за мінімальну (запуск
+відмовлено з посиланням на сайт).
 
 **Сумісність із сьогоднішніми установками.** Гравці з `Asterium.exe` отримають престартер 0.3.0 з наступним збиранням
 лаунчера; він ставить JRE у нове сховище (одноразово ~120 МБ) і не чіпає `GravitLauncherStore`. `Asterium.exe` і
@@ -163,15 +170,19 @@ main:
   overrides = net::overrides::read()  (помилка → вихід з кодом 2)              ADR 0008
   store = store::open()  (шляхи, tmp/ чиститься, журнал запуску)               ADR 0005
   jar_source = jar::embedded::detect(current_exe) ? Embedded(path) : Copy(store/launcher/Asterium.jar)
-  якщо JRE готовий і перевірка JRE свіжа і (Embedded або копія jar валідна):
-      launch(jre, jar_source) → успіх: вихід 0; рання помилка: вікно з помилкою
+  Copy: policy = збережена підписана політика; прострочена (24 год) → оновити (3 с)    ADR 0001
+        версія нижче minWrapperVersion → вікно «завантажте нову версію», вихід 7
+  якщо JRE готовий і перевірка JRE свіжа і (Embedded або копія jar валідна) і немає повідомлення політики:
+      preflight (jar, JRE, бібліотеки JavaFX на Linux) → launch
+        Embedded: вихід 0 одразу після spawn
+        Copy: чекати обгортку (до 10 с), розібрати launcher-start.log → успіх / повтор / вікно помилки
   інакше:
       спробувати вікно Tauri (приховане до першого кадру)
         → не вдалося (немає WebView2 / WebKitGTK): режим без вікна (Windows: MessageBoxW)  ADR 0006
-      у фоні: [перевірка або встановлення JRE] → [копія jar, якщо треба] → launch → done/error
+      у фоні: [перевірка або встановлення JRE, «Грати зараз»] → [копія jar, якщо треба] → preflight → launch → done/error
 ```
 
-Події для фронтенду: `stage` (`jre-check`, `jre-download`, `jre-install`, `jar-download`, `launching`), `progress`
+Події для фронтенду: `stage` (`jre-check`, `jre-download`, `jre-install`, `jre-verify`, `jar-download`, `launching`), `progress`
 (байти, не частіше ніж раз на 100 мс - виправлений троттлінг), `error` (код помилки + параметри для i18n + чи
 можливий повтор), `done`.
 
@@ -183,7 +194,8 @@ main:
 - **Linux (один файл, AppImage):** `setsid`; під AppImage (`APPIMAGE` + `APPDIR`) - копія jar і чищення середовища;
   `__GL_THREADED_OPTIMIZATIONS`/`__NV_DISABLE_EXPLICIT_SYNC` лише для самого престартера; повідомлення про
   відсутні бібліотеки JavaFX з назвами пакетів; сховище `${XDG_DATA_HOME:-~/.local/share}/asterium/prestarter`.
-- **macOS:** `java` з `-Xdock:name=Asterium -Xdock:icon=…`; копія jar; зняття `com.apple.quarantine` з власних
+- **macOS:** `JDK_JAVA_OPTIONS` з `-Xdock:name=Asterium -Xdock:icon=…` у середовищі дочірнього процесу (обгортці
+  `-Xdock` нічого не дає, ADR 0006); копія jar; зняття `com.apple.quarantine` з власних
   файлів; підказка «перетягніть у Програми» з `/Volumes/…` або `…/AppTranslocation/…`; сховище
   `~/Library/Application Support/Asterium/Prestarter`; кожен зріз universal-бінарника бере JRE своєї архітектури.
 
@@ -228,7 +240,7 @@ main:
   `ubuntu-22.04-arm`, `windows-2025`, `windows-11-arm`, `macos-15`; `svelte-check` і vitest; `cargo deny`;
   `shellcheck`, `actionlint`; збирання 7 артефактів; smoke; для PR у `release` - перевірка версії, дати в
   `CHANGELOG.md` і `release-notes/<версія>.json`.
-- `publish.yml` (лише `release`): версія → збирання без кешів (macOS підписується, якщо є секрети) → smoke на тих
+- `publish.yml` (лише `release`): версія → збирання без кешів → підпис macOS окремим job з environment `release` (якщо є секрети) → smoke на тих
   самих байтах → `SHA256SUMS.txt`, `release.json` (schema 1, метадані активів), підпис Ed25519 → атестація
   походження → draft → публікація. Нічого не публікується, якщо будь-який крок упав.
 - `jre-watch.yml`: щотижня оновлює аварійну таблицю JRE окремим PR і стежить за WebKit у Windows aarch64.
@@ -432,11 +444,18 @@ apps/web/src/shared/mock-canon/fixtures/launcher.fixture.ts фікстури з 
 | Обрив або підміна архіву JRE | sha1/розмір не збігаються → одна автоматична повторна спроба | після другої - «Не вдалося завантажити Java» + «Спробувати ще» |
 | Немає місця | перевірка до завантаження | «Потрібно ще 420 МБ на диску C:» |
 | Немає WebView2 (Windows) | режим без вікна | нативне повідомлення, далі лаунчер відкривається сам |
+| Windows 7/8.1; Windows 10 on ARM | бінарник не запускається (Rust ≥ 1.78 і Liberica 25 - Windows 10+; Windows 10 on ARM без емуляції x64) | сайт показує «не підтримується» до завантаження |
+| SmartScreen / Smart App Control (непідписаний `Asterium.exe`) | SmartScreen: «Докладніше» → «Усе одно запустити»; SAC у режимі enforcement блокує без обходу для окремої програми | FAQ сайту; підпис Authenticode - відкрите питання 5 |
 | Один файл Linux без WebKitGTK | завантажувач виходить з кодом 127 до `main` | нічого; сайт за замовчуванням дає AppImage і показує вимоги |
 | AppImage без FUSE | runtime AppImage пише в термінал | FAQ: `--appimage-extract-and-run` |
-| Немає GTK 3 / libXtst для JavaFX | лаунчер виходить одразу, престартер ловить ранню помилку | вікно з назвами пакетів для свого дистрибутива |
+| Немає GTK 3 / libXtst для JavaFX | перевірка `ldd` до запуску (з очищеним середовищем), ADR 0006 | вікно з командою встановлення пакетів для свого дистрибутива; лаунчер не запускається (код 5) |
+| JVM лаунчера падає в перші секунди (режим копії) | обгортка Gravit пише `Process exit with error code`; повтор з `-Dlauncher.waitProcess=true` | вікно з останніми рядками журналу (стек JVM лаунчера) |
+| Обгортка AppImage/DMG нижча за `minWrapperVersion` з підписаної політики | лаунчер не запускається (код 7) | вікно «Завантажте нову версію Asterium» з посиланням на сайт |
+| Є новіша обгортка AppImage/DMG | запуск як завжди | ненав'язливе повідомлення з посиланням (не частіше разу на добу) |
+| Нова версія JRE під час запуску | вікно встановлення | кнопка «Грати зараз» запускає зі старою JRE, оновлення - наступного разу |
 | LaunchServer недоступний на першому запуску AppImage/macOS | завантаження jar не вдається | «Сервер Asterium недоступний» + «Спробувати ще» |
-| Пошкоджена копія jar | рання помилка → повторне завантаження jar → запуск | нічого, або помилка після другої спроби |
+| Пошкоджена копія jar | перевірка zip до запуску або `Invalid or corrupt jarfile` від обгортки → повторне завантаження jar → запуск | нічого, або помилка після другої спроби |
+| Пошкоджений вбудований jar | перевірка zip до запуску | «Файл пошкоджено, завантажте Asterium знову» (код 4) |
 | Офлайн, JRE вже є | перевірка оновлень JRE пропускається | гра запускається |
 | macOS Gatekeeper | застосунок без Developer ID | діалог «не відкрито» → інструкція з сайту і з вікна DMG |
 | Варіант без URL на сервері | неможливий: такий варіант не вмикається | - |
@@ -460,7 +479,8 @@ apps/web/src/shared/mock-canon/fixtures/launcher.fixture.ts фікстури з 
 | Складені файли (`Asterium*.exe`, `Asterium_linux*`) | збирає Gravit на сервері; jar підписано ключем Gravit; оновлення перевіряється SHA-512 + secure hash | задача перевірки API: префікс ≠ підписаний престартер або хвіст ≠ `Asterium.jar` → без позначки «перевірено», подія `error` |
 | Завантаження гравцем | TLS до `launcher.asterium.pro`; sha256 на сайті | гравець може звірити sha256 і (для досвідчених) підпис `release.json` |
 | JRE | HTTPS до github.com + sha1 з api.bell-sw.com (два хости); аварійний - sha256 у коді | невідповідність → не встановлюється |
-| Копія jar (AppImage, macOS) | HTTPS до закріпленого хоста, без редиректів на інші хости, ліміт 64 МіБ, перевірка zip/`Main-Class` | та сама довіра, що в самооновлення Gravit і в завантаження з сайту |
+| Копія jar (AppImage, macOS) | HTTPS до закріпленого хоста лише з коренями Mozilla (`webpki-root-certs`, не сховище ОС), без редиректів на інші хости, ліміт 64 МіБ, перевірка zip/`Main-Class` | CA, доданий в ОС (корпоративний проксі або шкідливе ПЗ), не підмінить jar; JVM лаунчера так само не довіряє сертифікатам ОС (`cacerts` JRE) |
+| Політика обгортки (`prestarter-policy.json`) | підпис Ed25519 `release.json` вшитим ключем, прив'язка до репозиторію/компонента/каналу, sha256 активу, anti-rollback за версією релізу | відхиляється, діє збережена або вшита |
 
 **Ланцюг постачання:** дії GitHub закріплені SHA; `cargo --locked` і `cargo deny` (джерела - лише crates.io, без git
 після прибирання форку tao); `yarn --frozen-lockfile`, прибрано пакет `"-"`; інструменти AppImage закріплені sha256,
@@ -484,10 +504,11 @@ environment `release`; PR-збирання без секретів.
 | Інтеграційні Rust | `src-tauri/tests/`, 5 раннерів | повний шлях без GUI проти локального HTTPS (тестовий CA) з `fake-java`: встановлення, оновлення JRE, копія jar, рання помилка і повтор, `setsid`, від'єднання |
 | Фронтенд | vitest + `svelte-check` | редуктор подій, прогрес, тексти станів |
 | Скрипти CI | bats/bash + `shellcheck` + `actionlint` | `release-manifest.sh` (метадані, старий формат), `make-dmg.sh`, `macos-signing.sh --self-test` |
-| Smoke релізних байтів | `smoke.yml` на рідних раннерах | кожен з 7 артефактів: GUI (знімок) → справжній Liberica → `java -jar` → маркер `Hello.jar`; чисте середовище; Windows без WebView2; кирилиця в шляху; «голий» Linux; macOS карантин і `spctl`; Wayland |
+| Smoke релізних байтів | `smoke.yml` на рідних раннерах | кожен з 7 артефактів: GUI (знімок) → справжній Liberica → `java -jar` → FX-проба, що повторює обгортку Gravit (перезапуск з `-cp`, вихід через 3 с) і відкриває вікно з `WebView` (WebKit) → маркер і знімок; чисте середовище; Windows без WebView2; кирилиця в шляху; «голий» Linux з підказкою пакетів; macOS карантин, `spctl`, назва в Dock; Wayland |
 | AsteriumReleases | JUnit + e2e (`run-e2e.sh`, розділ X) | [ADR 0010](adr/0010-launchserver-variants-and-static-downloads.md) «Перевірка»: побайтові складені файли, nginx, `LauncherSignCheck` до і після рестарту, доповнення тегу, відкат через `since` |
 | Сайт | vitest, Playwright, axe, знімки | [ADR 0011](adr/0011-site-download-experience.md) «Перевірка» |
-| Інтеграція (наступний етап workflow) | контейнер з e2e LaunchServer | справжній `Prestarter-linux-x86_64` з CI-запуску лейну як актив тестового релізу → LaunchServer збирає `Asterium_linux` → запуск під Xvfb у контейнері з GTK: лаунчер (jar) стартує і питає сервер `LINUX_X86_64`; фікстури сайту оновлюються розмірами і sha256 з того самого запуску |
+| Інтеграція (наступний етап workflow) | контейнер з e2e LaunchServer | справжній `Prestarter-linux-x86_64` з CI-запуску лейну як актив тестового релізу → LaunchServer збирає `Asterium_linux` → запуск під Xvfb у контейнері з GTK: лаунчер (jar) стартує і питає сервер `LINUX_X86_64`; самооновлення на першому запуску, поки престартер щойно вийшов; фікстури сайту оновлюються розмірами і sha256 з того самого запуску |
+| Справжній лаунчер на Windows (rc) | ПК власника, перед злиттям релізу | 0.3.0-rc.1 на тестовому LaunchServer: `Asterium.exe` відкриває лаунчер, вхід, самооновлення (розділ 11) |
 
 Правила звітів: кожна команда з кодом виходу (без пайпів) і кількістю тестів; номери запусків CI і коди виходу кожного
 job; GUI на столі власника не запускається - лише Xvfb, контейнери і раннери.
@@ -497,7 +518,9 @@ job; GUI на столі власника не запускається - лиш
 | Крок | Хто | Що | Перевірка | Відкат |
 |---|---|---|---|---|
 | 1 | власник зливає PR `gravit-docker` у `main` (Dokploy розгортає сам) | образ з AsteriumReleases 2.3.0, entrypoint створює `downloads/`, compose з томом `downloads`, nginx | `mc-releases status` як раніше; конфіг Prestarter не переписано; `downloads.json` не з'явився (старий конфіг) | revert PR |
-| 2 | власник зливає PR престартера в `release` (публікує v0.3.0) | сім активів + нотатки | CI зелений до злиття (дата в changelog); після: модуль зі старим конфігом ставить лише `Prestarter.exe` v0.3.0, перезбирає `Asterium.exe`; перші 4,x МБ `Asterium.exe` = новий `Prestarter.exe` | `mc-releases rollback prestarter` (v0.2.0) |
+| 2a | власник | утримати компонент: `mc-releases update prestarter v0.2.0` (вебхук утримання не знімає) | `mc-releases status`: prestarter утримано на v0.2.0 | - |
+| 2b | власник зливає PR `main` → `release` з версією `0.3.0-rc.1` | pre-release (продакшн з `allowPrerelease=false` його ігнорує) | тестовий LaunchServer (`allowPrerelease=true`) ставить rc і збирає `Asterium.exe`, `Asterium_linux*`; smoke справжнього лаунчера (розділ 10) і ручний запуск на справжньому Windows-ПК | rc не доходить до гравців |
+| 2c | власник зливає PR з версією `0.3.0` | сім активів + нотатки + політика | CI зелений до злиття (дата в changelog); `mc-releases update prestarter` знімає утримання; модуль зі старим конфігом ставить лише `Prestarter.exe` v0.3.0, перезбирає `Asterium.exe`; перші 4,x МБ `Asterium.exe` = новий `Prestarter.exe`; журнали підтримки першу годину | `mc-releases rollback prestarter` (v0.2.0) - **але відкат доходить лише до гравців, чий престартер 0.3.0 ще запускає лаунчер** (оновлення йде через самооновлення лаунчера); хто застряг до запуску лаунчера, завантажує файл із сайту заново: готові банер на сайті і повідомлення в Discord з посиланням |
 | 3 | власник оновлює `AsteriumReleases-Config.prod.json` → `ASTERIUM_RELEASES_CONFIG_B64` у Dokploy → redeploy | активи з `launcherVariant`/`download`/`since` | `mc-releases status` (варіанти, URL, хеші); `curl -sI` на `Asterium_arm64.exe`, `Asterium_linux`, `Asterium_linux_arm64`, `downloads/*`, `downloads/downloads.json`; `LauncherSignCheck` з e2e проти продакшну не запускається | попередній конфіг: варіанти зникають після наступного збирання, `downloads/` модуль чистить від файлів, яких немає в конфігу |
 | 4 | власник зливає PR сайту в `feat/web` і розгортає Site у Dokploy вручну | модалка, сторінка, новий контракт на моках | Playwright на розгорнутому сайті | попередній образ Site |
 | 5 | workflow API (окремо) | `GET /launcher`, `/launcher/changelog`, задача перевірки | контрактні тести; `ASTERIUM_DATA_SOURCE_LAUNCHER=api` | назад на mock |
@@ -511,11 +534,15 @@ job; GUI на столі власника не запускається - лиш
 
 Кожне має рішення за замовчуванням; робота не чекає відповіді. Список з поясненнями - у звіті етапу; коротко:
 
-1. Windows ARM64: JRE x64 під емуляцією (повний лаунчер) чи нативна (швидше, без вбудованих сторінок)? → x64.
+1. Windows ARM64: JRE x64 під емуляцією (повний лаунчер) чи нативна (швидше, без вбудованих сторінок)? → x64; тоді
+   ARM-пристрої отримують `Asterium.exe`, а `Asterium_arm64.exe` вмикається разом з нативною JRE (ADR 0004).
 2. Власне сховище престартера (одноразово ~120 МБ для нинішніх гравців Windows) чи далі `GravitLauncherStore`? → власне.
 3. Linux за замовчуванням на сайті → AppImage.
 4. Лишити `launcher-prestarter` публічним (безкоштовні macOS/ARM-раннери, атестація)? → так.
-5. Authenticode для Windows → поки без нього (як сьогодні); сертифікат пізніше через `OSSLSignCode`.
+5. Authenticode для Windows → поки без нього (як сьогодні; SmartScreen і Smart App Control - у FAQ). Пізніше:
+   ключ сертифіката з 2023-06-01 має жити в HSM, тож варіанти - OV через хмарний HSM і `osslsigncode -pkcs11module`
+   або jsign з хмарним KMS, або сертифікат Certum для відкритого коду (репозиторій публічний); підпис з таким ключем
+   доводиться в e2e до купівлі.
 6. `release-notes.json` у релізах рантайму → так, з наступного релізу.
 7. Environment `release` і захист гілки `release`; переносити `RELEASE_SIGNING_KEY` у environment → так.
 8. Правило кешу Cloudflare для `launcher.asterium.pro` (`/downloads/*` і `Asterium*` не кешувати довго) → перевірити
@@ -572,3 +599,46 @@ windows-installer (без WebView2 застосунок «WILL NOT work»), webv
 (Prestarter_module, OpenSSLSignCode_module); GravitLauncher/LauncherPrestarter `rust/5.7.x`; actions/runner-images;
 PyInstaller feature notes і issue 4934 (дописані дані й codesign); eclecticlight.co і lapcatsoftware.com (App
 Translocation).
+
+## 15. Гра на кожній платформі
+
+Лаунчер, що відкрився, ще не означає, що гра стартує: Gravit відмовляє в запуску клієнта без
+`natives/<os>/<arch>` (`ClientLauncherProcess.java:98-104`, «Your operating system or architecture not supported»), а
+Java клієнта фільтрується за ОС і архітектурою (`LauncherBackendImpl.java:297-323`, `customJavaDownload`). Каталоги
+клієнтів продакшну збиралися для гравців Windows. Тому:
+
+1. **Перевірка лише читанням** (лейн server): для кожного профілю продакшну - чи є `natives/linux/x86-64`,
+   `natives/linux/arm64`, `natives/macosx/x86-64`, `natives/macosx/arm64` (і `natives/mustdie/x86-64`), і чи є
+   придатна Java клієнта для кожної цілі. Результат - таблиця в звіті лейну і поле `clientSupport` у
+   `downloads.json` ([ADR 0010](adr/0010-launchserver-variants-and-static-downloads.md), «Ревізія»).
+2. **Сайт не рекламує ціль наосліп** ([ADR 0011](adr/0011-site-download-experience.md), «Ревізія»): для вибраної
+   системи модалка і сторінка показують сервери, де гра ще не стартує.
+3. **Приймання перед кроком 4 розгортання:** «увійти на один сервер» на кожній цілі, де `clientSupport` каже «так»
+   (Windows - власник; інші - доступні власнику машини або спільнота), з записом результату.
+
+Windows ARM64 тут окремий випадок: JVM x64 бере `mustdie/x86-64`, тож клієнти працюють так само, як на x64.
+
+## 16. Рецензія дизайну: як враховано
+
+Рецензія 2026-10-02 (вердикт «revise») дала 8 major і 9 minor знахідок. Кожна має рішення; лейни застосовують їх у
+своїй частині.
+
+| # | Рівень | Знахідка | Рішення | Де | Лейн |
+|---|---|---|---|---|---|
+| 1 | major | рання помилка за кодом обгортки не бачить JVM лаунчера | перевірки до запуску (jar, JRE, `ldd` JavaFX на Linux), розбір `launcher-start.log`, повтор з `waitProcess` | ADR 0006 | prestarter |
+| 2 | major | 4 с очікування тримають образ і ламають самооновлення на місці | вбудований режим виходить одразу після `spawn()`; тест з `truncate+write` через 300 мс | ADR 0006 | prestarter, server (e2e) |
+| 3 | major | `Asterium_arm64.exe` замінюється x64 на першому запуску | ARM-пристроям - `Asterium.exe`, `EXE_WINDOWS_ARM64` вимкнено до нативної JRE | ADR 0004, 0010, 0011 | усі |
+| 4 | major | AppImage/DMG без каналу оновлення | підписана політика `prestarter-policy.json`, дзеркало в `downloads/`, повідомлення і мінімальна версія | ADR 0001, 0010 | prestarter, server |
+| 5 | major | v0.3.0 без утримання і канарки; відкат не досягає зламаних | утримання, rc на тестовому LaunchServer, зняття утримання, чесний текст відкату, банер і Discord | розділ 11 | власник, server (README) |
+| 6 | major | жоден тест не запускає JavaFX/обгортку на 6 з 7 цілей | FX-проба на всіх 7 артефактах; справжній лаунчер - інтеграція і rc | ADR 0009, розділ 10 | prestarter |
+| 7 | major | ніхто не перевіряє, що гра стартує на macOS/Linux | розділ 15: перевірка natives, `clientSupport`, приймання | розділ 15, ADR 0010, 0011 | server, site |
+| 8 | major | `jre-watch.yml` не запуститься, моделі гілок немає | `main` - інтеграція, реліз PR `main` → `release`, `workflow_dispatch` для CI на PR бота | ADR 0009 | prestarter, власник |
+| 9 | minor | Smart App Control і HSM для Authenticode | FAQ, переписане відкрите питання 5 | розділ 8, 12, ADR 0010, 0011 | site, server |
+| 10 | minor | Windows 7/8.1 і Windows 10 on ARM | сайт: «не підтримується»; перевірка емуляції x64 у нативному ARM-престартері | ADR 0004, 0011 | prestarter, site |
+| 11 | minor | `canonicalize()` дає `\\?\` | `dunce`, тест | ADR 0006 | prestarter |
+| 12 | minor | jar у режимі копії довіряє сховищу ОС | лише корені Mozilla для хоста лаунчера | ADR 0001, розділ 9 | prestarter |
+| 13 | minor | оновлення JRE блокує гру, 15 с замало | «Грати зараз», 60 с, стадія перевірки | ADR 0005 | prestarter |
+| 14 | minor | секрети середовища в `build.yml` | job `sign-macos` у `publish.yml` | ADR 0003, 0009 | prestarter |
+| 15 | minor | xwin CRT/SDK і glibc від образу раннера | закріплені версії xwin; Linux у контейнері `ubuntu:22.04@sha256` | ADR 0009 | prestarter |
+| 16 | minor | CI двічі, без скасування, Rosetta припущено | `concurrency`, job `gate`, явна Rosetta, фактичні числа | ADR 0009 | prestarter |
+| 17 | minor | `-Xdock` на обгортці без ефекту | `JDK_JAVA_OPTIONS`, перевірка в CI | ADR 0003, 0006 | prestarter |

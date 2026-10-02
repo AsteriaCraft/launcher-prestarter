@@ -1,6 +1,6 @@
 # ADR 0010. LaunchServer: варіанти лаунчера через Prestarter_module, статичні завантаження в `downloads/`, `downloads.json`
 
-- Статус: запропоновано (етап Design, 2026-10-02)
+- Статус: запропоновано (етап Design, 2026-10-02); переглянуто після рецензії дизайну 2026-10-02 (див. «Ревізія»)
 - Репозиторій: `gravit-docker` (модуль AsteriumReleases, entrypoint, compose, nginx, README)
 - Пов'язані: [0001](0001-artifact-matrix-and-jar-delivery.md), [0004](0004-windows-arm64-uses-x64-jre.md),
   [0009](0009-ci-matrix-release-assets-and-manifest.md), [0011](0011-site-download-experience.md)
@@ -181,3 +181,32 @@
   варіанта до і **після рестарту**: актуальний → без оновлення, старіший → точна URL, ніколи `null`; реліз з
   розбіжністю `arch` - відмова; додати актив до конфігу на встановленому тегу → доповнення і збирання; відкат на
   тег до `since` → варіанти вимкнено, збирання зелене; повний образ без кешу.
+
+## Ревізія після рецензії (2026-10-02)
+
+Лейн server реалізує рішення вище з такими змінами (вони мають пріоритет над текстом вище там, де розходяться):
+
+1. **`EXE_WINDOWS_ARM64` не вмикається** ([0004](0004-windows-arm64-uses-x64-jre.md)). Модуль уміє цей варіант
+   (валідація, URL, хеш), але `Config.prod.example.json`, README і крок 3 розгортання **не** додають
+   `launcherVariant: EXE_WINDOWS_ARM64` для `Prestarter-windows-aarch64.exe`: файл можна встановлювати як звичайний
+   актив без варіанта або не встановлювати. Причина: з JRE x64 лаунчер питає `EXE_WINDOWS_X86_64`, дайджест ARM-файла
+   ніколи не збігається з `Asterium.exe`, і файл перезаписується x64-збіркою на першому ж запуску
+   (`LauncherRequest.java:25-39`, `LocalUpdatesProvider.java:110-113`). Рядок таблиці «`Asterium_arm64.exe`» у
+   пункті 6 діє лише після переходу на нативну JRE. e2e фіксує поведінку: `LauncherSignCheck` як
+   `EXE_WINDOWS_X86_64` з дайджестом ARM64-файла → точна URL `Asterium.exe`.
+2. **Дзеркало підписаної політики обгортки** ([0001](0001-artifact-matrix-and-jar-delivery.md)). Модуль кладе в
+   `downloads/` три файли встановленого релізу компонента `prestarter`: `release.json` → `prestarter-release.json`,
+   `release.json.sig` → `prestarter-release.json.sig`, актив `prestarter-policy.json` → `prestarter-policy.json`
+   (байт у байт, атомарно, після встановлення, відкату і на старті; без активу в релізі - файли видаляються).
+   Конфіг: необов'язкове поле компонента `mirrorManifest: true` (або еквівалент, який обере лейн) для `prestarter`;
+   nginx віддає їх з тими самими заголовками, що й решту `downloads/` (`application/json`, `no-cache`). AppImage і
+   DMG читають `https://launcher.asterium.pro/downloads/prestarter-policy.json` і поруч маніфест з підписом.
+3. **Гра на кожній платформі** (`docs/crossplatform.md`, розділ 15). `downloads.json` отримує
+   `clientSupport`: для кожного профілю - список `(os, arch)`, для яких є `natives/<os>/<arch>` у каталозі клієнта
+   і придатна Java клієнта (`customJavaDownload` або JRE не нижче `minJavaVersion` профілю). Модуль виводить це з
+   профілів і каталогу `updates/` під час запису `downloads.json`, лише читаючи файли.
+4. **Розгортання з утриманням** (розділ 11): README описує утримання компонента перед злиттям релізу
+   (`mc-releases update prestarter v0.2.0`), rc на тестовому LaunchServer з `allowPrerelease=true` і зняття утримання.
+5. **Authenticode** (відкрите питання 5): README не обіцяє «увімкнути `OSSLSignCode`, коли буде сертифікат»: з
+   2023-06-01 ключ сертифіката підпису коду має бути в HSM, тож шлях - PKCS#11 до хмарного HSM
+   (`osslsigncode -pkcs11module`) або jsign з хмарним KMS; підпис з таким ключем доводиться в e2e до купівлі.
