@@ -32,11 +32,16 @@ for tool in node corepack rustup cargo clang lld-link llvm-rc file; do
   command -v "$tool" >/dev/null || { echo "build-windows-exe: missing tool: $tool" >&2; exit 1; }
 done
 
+# cargo-xwin links <cache>/clang-cl to the first clang in PATH, but it checks for an old link with exists(), which
+# follows the link: a dangling one (from a cache restored after the wrapper's directory was gone) is never removed
+# and the new link fails with "File exists". Remove it first; cargo-xwin creates it again.
+rm -f "${XWIN_CACHE_DIR:-$HOME/.cache/cargo-xwin}/clang-cl"
 if [ "$arch" = aarch64 ]; then
   # ring builds its ARM64 Windows C code with plain clang; see clang-msvc-wrapper.sh.
   REAL_CLANG="$(command -v clang)"
   export REAL_CLANG
-  wrapper_dir="$(mktemp -d)"
+  wrapper_dir="$PWD/.tools/clang-wrapper"
+  mkdir -p "$wrapper_dir"
   install -m 0755 scripts/ci/clang-msvc-wrapper.sh "$wrapper_dir/clang"
   export PATH="$wrapper_dir:$PATH"
 fi
