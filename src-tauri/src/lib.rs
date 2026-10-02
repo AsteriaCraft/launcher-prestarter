@@ -170,6 +170,8 @@ fn check_java_ready() -> Option<PathBuf> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // reqwest is built with rustls-no-provider: install ring once, before any HTTP client is created.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     {
         #[cfg(not(dev))]
         if let Some(java_path) = check_java_ready() {
@@ -185,8 +187,11 @@ pub fn run() {
 
     #[cfg(target_family = "unix")]
     {
-        std::env::set_var("__GL_THREADED_OPTIMIZATIONS", "0");
-        std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
+        // SAFETY: single-threaded at this point (before Tauri starts any thread).
+        unsafe {
+            std::env::set_var("__GL_THREADED_OPTIMIZATIONS", "0");
+            std::env::set_var("__NV_DISABLE_EXPLICIT_SYNC", "1");
+        }
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

@@ -40,7 +40,7 @@ pub fn is_java_outdated(metadata: &Config) -> bool {
 
 
 pub fn get_appdata_dir() -> Result<PathBuf> {
-    dirs_next::data_dir().ok_or_else(|| anyhow!("Cannot find AppData directory"))
+    dirs::data_dir().ok_or_else(|| anyhow!("Cannot find AppData directory"))
 }
 
 pub fn target_dir() -> Result<PathBuf> {
