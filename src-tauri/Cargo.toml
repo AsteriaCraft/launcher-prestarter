@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # TLS through rustls with the ring provider and the OS certificate store (rustls-platform-verifier): no OpenSSL in the
 # Linux binary, and aws-lc-rs (reqwest 0.13's default provider) would need a C/asm cross-build for Windows ARM64.
-reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "blocking", "http2", "system-proxy"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "blocking", "system-proxy"] }
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
 webpki-root-certs = "1.0.9"
 # Digests (sha1 for the Liberica API, sha256) and Ed25519 verification of the signed policy: the same ring that
