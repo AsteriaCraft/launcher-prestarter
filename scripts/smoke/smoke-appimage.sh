@@ -40,8 +40,7 @@ cd "$tmp/Downloads"
 log "[$label] first start"
 ./Asterium.AppImage &
 pid=$!
-sleep 8
-screenshot "$label-1-prestarter"
+screenshot_window "$tmp/store/logs/prestarter-1.log" "$label-1-prestarter" 60
 wait_pid "$pid" 900 || fail "[$label] the AppImage did not finish in 15 minutes"
 collect_store "$tmp/store" "$label/run-1"
 [ "$EXIT_CODE" = 0 ] || fail "[$label] the AppImage exited with $EXIT_CODE"
@@ -61,9 +60,7 @@ case "$cwd" in
   *) fail "[$label] the launcher runs in $cwd, not in OWD or the home directory" ;;
 esac
 grep -q "wrapper outcome: Started" "$SMOKE_OUT/$label/run-1/prestarter-1.log" || fail "[$label] the wrapper was not watched"
-if grep -q "did not report ready" "$SMOKE_OUT/$label/run-1/prestarter-1.log"; then
-  fail "[$label] the window's page never reported its first frame (IPC or CSP problem)"
-fi
+[ "$WINDOW_SHOWN" = 1 ] || fail "[$label] the window's page never reported ready (IPC, CSP or its script)"
 
 log "[$label] second start (fast path)"
 ./Asterium.AppImage &

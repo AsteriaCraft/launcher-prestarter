@@ -74,14 +74,11 @@ run_slice() { # <label> <arch prefix...>
   export ASTERIUM_PRESTARTER_STORE="$store" ASTERIUM_SMOKE_DIR="$markers"
   "$@" "$binary" &
   local pid=$!
-  sleep 8
-  screenshot "macos-$label-1-prestarter"
+  screenshot_window "$store/logs/prestarter-1.log" "macos-$label-1-prestarter" 60
   wait_pid "$pid" 900 || fail "[$label] the app did not finish"
   collect_store "$store" "macos/$label"
   [ "$EXIT_CODE" = 0 ] || fail "[$label] the app exited with $EXIT_CODE"
-  if grep -q "did not report ready" "$out/$label/prestarter-1.log"; then
-    fail "[$label] the window's page never reported its first frame (IPC or CSP problem)"
-  fi
+  [ "$WINDOW_SHOWN" = 1 ] || fail "[$label] the window's page never reported ready (IPC, CSP or its script)"
   wait_file "$markers/fx-0.json" 120 || fail "[$label] the FX probe never reported"
   sleep 1
   screenshot "macos-$label-2-probe"

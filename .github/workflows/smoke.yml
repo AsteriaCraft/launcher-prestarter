@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   windows-x64:
-    name: Windows x64 (Cyrillic path, default store, no WebView2)
+    name: Windows x64 (non-ASCII path, default store, no WebView2, path Java cannot read)
     runs-on: windows-2025
     timeout-minutes: 45
     defaults:
@@ -34,10 +34,12 @@ jobs:
         with:
           name: smoke-fixtures
           path: dist/fixtures
-      - name: Embedded jar from a Cyrillic path with the default store
+      - name: Embedded jar from a non-ASCII path with the default store
         run: bash scripts/smoke/smoke-embedded.sh dist/Prestarter.exe windows-x64 amd64 default-store
       - name: Without WebView2 (empty WEBVIEW2_BROWSER_EXECUTABLE_FOLDER)
         run: bash scripts/smoke/smoke-embedded.sh dist/Prestarter.exe windows-x64-no-webview2 amd64 no-webview
+      - name: A Cyrillic folder the ANSI code page cannot write (refused with exit code 6)
+        run: bash scripts/smoke/smoke-ansi-path.sh dist/Prestarter.exe windows-x64-ansi-path
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

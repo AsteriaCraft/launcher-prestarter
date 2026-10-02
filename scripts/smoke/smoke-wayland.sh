@@ -29,11 +29,10 @@ env -u DISPLAY WAYLAND_DISPLAY=wayland-smoke GDK_BACKEND=wayland ASTERIUM_PRESTA
   ASTERIUM_PRESTARTER_STORE="$store" ASTERIUM_PRESTARTER_LAUNCHER_URL=http://127.0.0.1:9/Asterium.jar \
   "$elf" >"$out/prestarter-stdout.txt" 2>&1 &
 pid=$!
-sleep 10
-WAYLAND_SCREENSHOT=wayland-smoke screenshot "wayland-prestarter"
+WAYLAND_SCREENSHOT=wayland-smoke screenshot_window "$store/logs/prestarter-1.log" "wayland-prestarter" 45
 kill "$pid" 2>/dev/null || true
 wait "$pid" 2>/dev/null || true
 cp -f "$store"/logs/*.log "$out/" 2>/dev/null || true
 [ -s "$SMOKE_OUT/wayland-prestarter.png" ] || fail "no Wayland screenshot"
-grep -q "webview" "$out/prestarter-1.log" || fail "the prestarter did not open its window on Wayland"
+[ "$WINDOW_SHOWN" = 1 ] || fail "the prestarter's window never appeared on Wayland (its page never reported ready)"
 log "Wayland screenshot: $SMOKE_OUT/wayland-prestarter.png"

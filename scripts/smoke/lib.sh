@@ -2,11 +2,14 @@
 # Shared helpers of the smoke scripts (ADR 0009). Sourced, not run. Works in bash on Linux, macOS and Git Bash on
 # Windows. Everything a run produces (logs, probe records, screenshots) goes to $SMOKE_OUT for upload.
 
-# Globals the helpers set for their callers: EXIT_CODE (wait_pid), SERVE_PORT (serve_dir).
+# Globals the helpers set for their callers: EXIT_CODE (wait_pid), SERVE_PORT (serve_dir), WINDOW_SHOWN
+# (screenshot_window).
 # shellcheck disable=SC2034
 EXIT_CODE=0
 # shellcheck disable=SC2034
 SERVE_PORT=0
+# shellcheck disable=SC2034
+WINDOW_SHOWN=0
 SMOKE_OUT="${SMOKE_OUT:-$PWD/smoke-out}"
 mkdir -p "$SMOKE_OUT"
 SERVER_PIDS=()
@@ -36,6 +39,41 @@ native_path() {
 
 python_bin() {
   if command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1; then echo python3; else echo python; fi
+}
+
+# Windows: the ANSI code page ("Language for non-Unicode programs"), which Java reads its command line in; empty
+# elsewhere.
+windows_ansi_code_page() {
+  [ "$(host_os)" = windows ] || return 0
+  powershell -NoProfile -Command '(Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage).ACP' | tr -d '\r'
+}
+
+# A folder name with letters beyond ASCII that Java can read on this machine: Cyrillic, or on a Windows whose ANSI
+# code page has no Cyrillic (GitHub's runners use 1252) Latin letters with diacritics (ADR 0006).
+readable_folder() {
+  case "$(windows_ansi_code_page)" in
+    "" | 1251 | 65001) echo "Ігри з пробілом" ;;
+    1250 | 1252 | 1254 | 1257) echo "Spiele für alle" ;;
+    *) echo "Games with spaces" ;;
+  esac
+}
+
+# Waits until <file> has a line matching the extended regex <pattern>, or <seconds> pass.
+wait_log() {
+  local file="$1" pattern="$2" seconds="$3" waited=0
+  until [ -f "$file" ] && grep -Eq "$pattern" "$file"; do
+    [ "$waited" -ge "$seconds" ] && return 1
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
+
+# Waits until the prestarter's page has reported ready (its window is then on screen) and takes the screenshot
+# <name>. Sets WINDOW_SHOWN to 1, or to 0 when <seconds> passed first: the caller fails after collecting the logs.
+screenshot_window() { # <prestarter log> <name> <seconds>
+  # shellcheck disable=SC2034 # read by the caller
+  if wait_log "$1" "showing the window" "$3"; then WINDOW_SHOWN=1; sleep 1; else WINDOW_SHOWN=0; fi
+  screenshot "$2"
 }
 
 # Waits until <file> exists (and is not empty) or <seconds> pass.
@@ -88,11 +126,14 @@ screenshot() {
   [ -s "$file" ] && log "screenshot $file"
 }
 
-# Serves <dir> on 127.0.0.1 and sets SERVE_PORT (not a subshell, so stop_servers can stop it).
+# Serves <dir> on 127.0.0.1 and sets SERVE_PORT (not a subshell, so stop_servers can stop it). serve.py, not
+# `python -m http.server`: that one looks up the host name, and macOS then covers the screen (and the screenshots)
+# with a "find devices on local networks" dialog.
 serve_dir() {
   local dir="$1" port
   port="$("$(python_bin)" -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-  "$(python_bin)" -m http.server "$port" --bind 127.0.0.1 --directory "$dir" >"$SMOKE_OUT/http-$port.log" 2>&1 &
+  "$(python_bin)" "$(native_path "$(dirname "${BASH_SOURCE[0]}")/serve.py")" "$port" "$(native_path "$dir")" \
+    >"$SMOKE_OUT/http-$port.log" 2>&1 &
   SERVER_PIDS+=("$!")
   local tries=0
   until curl -fsS -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do

@@ -21,7 +21,8 @@ if [ ! -s "$raw" ] || [ ! -s "$probe" ]; then fail "missing $raw or $probe"; fi
 trap stop_servers EXIT
 
 tmp="$(temp_root)/smoke-$label-$$"
-dir="$tmp/Ігри з пробілом"
+# A folder with letters beyond ASCII that Java reads here; smoke-ansi-path.sh covers one the code page cannot write.
+dir="$tmp/$(readable_folder)"
 mkdir -p "$dir"
 case "$(host_os)" in windows) exe="$dir/Asterium.exe" ;; *) exe="$dir/Asterium_linux" ;; esac
 cat "$raw" "$probe" > "$exe"
@@ -54,14 +55,18 @@ log "[$label] first start: $exe"
 started=$(date +%s)
 "$exe" --smoke-arg "з пробілом" &
 pid=$!
-sleep 6
-screenshot "$label-1-prestarter"
+if [ "$mode" = no-webview ]; then
+  sleep 6
+  screenshot "$label-1-prestarter"
+else
+  screenshot_window "$store/logs/prestarter-1.log" "$label-1-prestarter" 45
+fi
 wait_pid "$pid" 900 || fail "[$label] the prestarter did not finish in 15 minutes"
 collect_store "$store" "$label/run-1"
 [ "$EXIT_CODE" = 0 ] || fail "[$label] the prestarter exited with $EXIT_CODE (logs in $SMOKE_OUT/$label/run-1)"
 log "[$label] first start finished in $(( $(date +%s) - started )) s with exit code 0"
-if [ "$mode" != no-webview ] && grep -q "did not report ready" "$SMOKE_OUT/$label/run-1/prestarter-1.log"; then
-  fail "[$label] the window's page never reported its first frame (IPC or CSP problem)"
+if [ "$mode" != no-webview ] && [ "$WINDOW_SHOWN" != 1 ]; then
+  fail "[$label] the window's page never reported ready (IPC, CSP or its script; see prestarter-1.log)"
 fi
 
 wait_file "$markers/fx-0.json" 180 || fail "[$label] the FX probe window never reported (see launcher-start.log)"
