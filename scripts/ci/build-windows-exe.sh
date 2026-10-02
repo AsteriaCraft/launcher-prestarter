@@ -32,6 +32,15 @@ for tool in node corepack rustup cargo clang lld-link llvm-rc file; do
   command -v "$tool" >/dev/null || { echo "build-windows-exe: missing tool: $tool" >&2; exit 1; }
 done
 
+if [ "$arch" = aarch64 ]; then
+  # ring builds its ARM64 Windows C code with plain clang; see clang-msvc-wrapper.sh.
+  REAL_CLANG="$(command -v clang)"
+  export REAL_CLANG
+  wrapper_dir="$(mktemp -d)"
+  install -m 0755 scripts/ci/clang-msvc-wrapper.sh "$wrapper_dir/clang"
+  export PATH="$wrapper_dir:$PATH"
+fi
+
 rustup target add "$target"
 if [ "$(cargo xwin --version 2>/dev/null | awk '{print $2}')" != "$CARGO_XWIN_VERSION" ]; then
   cargo install --locked cargo-xwin --version "$CARGO_XWIN_VERSION"

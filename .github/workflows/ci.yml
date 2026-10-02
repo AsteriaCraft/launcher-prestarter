@@ -174,7 +174,11 @@ jobs:
         working-directory: src-tauri
         run: |
           cargo xwin clippy --locked --all-targets --target x86_64-pc-windows-msvc -- -D warnings
-          cargo xwin clippy --locked --all-targets --target aarch64-pc-windows-msvc -- -D warnings
+          # ARM64: the same clang wrapper as scripts/ci/build-windows-exe.sh (ring builds that C code with plain clang).
+          REAL_CLANG="$(command -v clang)"
+          export REAL_CLANG
+          install -D -m 0755 ../scripts/ci/clang-msvc-wrapper.sh "$RUNNER_TEMP/clang-wrapper/clang"
+          PATH="$RUNNER_TEMP/clang-wrapper:$PATH" cargo xwin clippy --locked --all-targets --target aarch64-pc-windows-msvc -- -D warnings
 
   build:
     name: Build
