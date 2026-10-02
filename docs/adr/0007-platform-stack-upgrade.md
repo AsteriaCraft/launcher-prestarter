@@ -29,17 +29,25 @@
    ([0002](0002-linux-formats-and-default.md)). Якщо знімок покаже заголовок GTK, повертаємо патч у вигляді
    закріпленого коміту (`rev = "…"`, не `branch`), а не гілки.
 3. **reqwest з rustls** і системним сховищем сертифікатів (rustls-platform-verifier: на Windows і macOS - сховище
-   ОС, на Linux - системні сертифікати), як в upstream 2.1.0 (reqwest 0.13). Точний набір feature перевіряє лейн
-   за документацією reqwest. Наслідки: ELF без OpenSSL; корпоративний TLS-проксі з власним CA, встановленим в ОС,
-   працює.
-4. **Тулчейн закріплено** в `rust-toolchain.toml` (точна стабільна версія ≥ 1.90, з `targets` для всіх семи
-   цілей і `components = ["clippy", "rustfmt"]`). Однакова версія в CI і локально.
+   ОС, на Linux - системні сертифікати), як в upstream 2.1.0 (reqwest 0.13). Набір, перевірений на етапі Build:
+   `reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "blocking", "http2",
+   "system-proxy"] }` і `rustls` з провайдером `ring` (встановлюється один раз на старті): типовий для reqwest 0.13
+   провайдер aws-lc-rs потребував би крос-збирання C/asm для `aarch64-pc-windows-msvc` через xwin. Той самий `ring`
+   рахує sha1/sha256 і перевіряє Ed25519 політики, тож другої криптобібліотеки немає. Наслідки: ELF без OpenSSL
+   (`cargo tree -i openssl-sys` порожнє); TLS-проксі з CA, встановленим в ОС, працює для Liberica; для хоста лаунчера
+   (jar, політика) - лише корені Mozilla (`webpki-root-certs`, [0001](0001-artifact-matrix-and-jar-delivery.md)).
+4. **Тулчейн закріплено** в `rust-toolchain.toml`: Rust 1.98.1 (точковий реліз, вересень 2026), `targets` для
+   шести цілей Rust (сім артефактів: macOS universal - це дві цілі, а кожна ціль Linux дає і один файл, і AppImage) і
+   `components = ["clippy", "rustfmt"]`. Однакова версія в CI, у контейнері збирання Linux і локально; edition 2024.
 5. **Прибрати** залежність `"-"`, feature `tray-icon`, `dirs-next` (на `dirs`), `thiserror` (якщо не
    використовується після рефакторингу).
-6. **Бандлер не ходить у мережу за неперевіреним.** `linuxdeploy-plugin-appimage` і все, що бандлер інакше
-   завантажив би, кладеться в його кеш інструментів (`$XDG_CACHE_HOME/tauri`) заздалегідь з закріпленими URL і
-   sha256 (`scripts/ci/appimage-tools.lock`), а сам крок `tauri build --bundles appimage` виконується без мережі
-   (`unshare -n` або контейнер `--network none`): спроба щось завантажити ламає збирання, а не проходить тихо.
+6. **Бандлер не ходить у мережу за неперевіреним.** Бандлер AppImage з @tauri-apps/cli 2.12.1 (tauri-bundler
+   2.10.1) бере з мережі `AppRun-<arch>` (tauri-apps/binary-releases `apprun-old`), `linuxdeploy-07333c6-<arch>`
+   (`linuxdeploy-07333c6`) і, необов'язково, `linuxdeploy-plugin-appimage` з `continuous`; скрипти gtk/gstreamer він
+   тримає в собі. Усі три кладуться в його кеш (`$XDG_CACHE_HOME/tauri`) з закріпленими URL і sha256
+   (`scripts/ci/appimage-tools.lock`; плагін - з тегованого релізу `1-alpha-20250213-1`, не з `continuous`), а
+   `tauri bundle --bundles appimage` виконується в контейнері з `--network none`: спроба щось завантажити ламає
+   збирання, а не проходить тихо.
 7. **Вікно стартує прихованим** і показується після першого кадру; версія в інтерфейсі - з `getVersion()`.
 8. **Мови інтерфейсу престартера** - ті самі, що в рантаймі: be, en, pl, ru, uk; вибір за мовою ОС
    (`sys-locale`), запасна - en. Тексти коротких станів («Завантажуємо Java», «Встановлюємо», «Запускаємо лаунчер»,

@@ -141,26 +141,30 @@
 
 ```
 src-tauri/src/
-  main.rs                 лише виклик lib::run
-  lib.rs                  збирання застосунку: швидкий шлях, вікно, обробка помилок верхнього рівня
-  app/                    Tauri: commands.rs, events.rs, window.rs, state.rs
-  jre/                    catalog.rs (таблиця цілей), api.rs (Liberica), fallback.rs + fallback.json,
-                          download.rs (потік, sha1, розмір, прогрес), extract/{zip.rs, tar.rs, guard.rs},
-                          install.rs (staging, перевірка, rename, GC), update_check.rs
-  jar/                    embedded.rs (визначення jar у власному файлі), fetch.rs (копія), validate.rs
-  launch/                 command.rs, environment.rs, process.rs (від'єднаний запуск, рання помилка)
-  store/                  paths.rs, state.rs (state.json schema 1), lock.rs, logs.rs
-  net/                    client.rs (reqwest + rustls), policy.rs (HTTPS, хости, редиректи, ліміти), overrides.rs
-  platform/               windows.rs (MessageBoxW, прапорці процесу), linux.rs (AppImage, підказки пакетів),
-                          macos.rs (карантин, транслокація, Dock)
-  i18n/                   messages.rs + be/en/pl/ru/uk
-src-tauri/tests/          інтеграційні тести без GUI; support/ (HTTPS-сервер з тестовим CA, fake-java)
-src/lib/                  components/, config/, i18n/, types/, utils/ (фронтенд Svelte)
-tests/fixtures/hello/     Hello.jar для smoke (вихідний код Java)
+  main.rs                 лише виклик lib::run і код виходу
+  lib.rs                  знімок середовища, перевизначення, сховище і журнал, план -> швидкий шлях або вікно
+  app/                    єдиний модуль, що знає Tauri: commands.rs, events.rs (троттлінг 100 мс), worker.rs,
+                          headless.rs (режим без вікна), mod.rs (вікно з конфігу, create: false)
+  flow/                   session.rs (один запуск: plan -> run -> launch), error.rs (коди виходу), report.rs
+  jre/                    catalog.rs, api.rs, version.rs, fallback.rs + fallback.json, extract/{zip,tar,guard}.rs,
+                          layout.rs (java -version), install.rs (staging, rename, GC)
+  jar/                    inspect.rs (EOCD/CEN/MANIFEST, хвіст Authenticode), source.rs, fetch.rs
+  launch/                 command.rs, environment.rs, process.rs, outcome.rs, libs.rs (ldd і пакети)
+  policy/                 model.rs, verify.rs (Ed25519 release.json), mod.rs (вердикт, anti-rollback, fetch)
+  store/                  paths.rs, state.rs (state.json schema 1), lock.rs, logs.rs, atomic.rs
+  net/                    client.rs (rustls: сховище ОС для Liberica, корені Mozilla для хоста лаунчера),
+                          download.rs (sha1 + sha256 потоком), overrides.rs
+  platform/               host.rs, windows.rs (MessageBoxW, емуляція x64, вільне місце), unix.rs (setsid,
+                          statvfs), macos.rs (карантин, транслокація, іконка для Dock)
+  i18n/                   mod.rs + messages/{be,en,pl,ru,uk}.json (їх же імпортує фронтенд)
+src-tauri/tests/          інтеграційні тести без GUI: flow.rs, https.rs (тестовий CA), binary.rs (справжній
+                          бінарник); support/; examples/fake_java.rs - замінник java
+src/lib/                  components/, config/, i18n/, types/, utils/ (фронтенд Svelte 5, редуктор стану з тестами)
+tests/fixtures/           hello/ (Hello.java) і fxprobe/ (обгортка як у Gravit + вікно JavaFX/WebView) для smoke
 ```
 
-Ядро (`jre`, `jar`, `launch`, `store`, `net`) не залежить від Tauri: його тестують інтеграційні тести і використовує
-і вікно, і швидкий шлях, і режим без WebView.
+Ядро (`flow`, `jre`, `jar`, `launch`, `policy`, `store`, `net`, `platform`, `i18n`) не залежить від Tauri (це перевіряє
+`ci.yml`): його тестують інтеграційні тести і використовує і вікно, і швидкий шлях, і режим без WebView.
 
 ### 4.2 Алгоритм запуску
 
@@ -215,8 +219,9 @@ main:
   "version": "0.3.0",
   "identifier": "pro.asterium.prestarter",         // було "com.asterium.prestarter"
   "app": {
-    "macOSPrivateApi": true,                       // прозоре вікно на macOS
-    "windows": [{ "title": "Asterium", "visible": false, /* решта як зараз */ }]
+    "macOSPrivateApi": true,                       // прозоре вікно на macOS (feature tauri/macos-private-api)
+    "windows": [{ "label": "main", "create": false, "title": "Asterium", "visible": false, /* решта як була */ }],
+    "security": { "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:" }
   },
   "bundle": {
     "active": false,                               // збірка бандлів - лише явним --bundles у скриптах CI
@@ -227,6 +232,9 @@ main:
   }
 }
 ```
+
+`create: false`: вікно створює код (`app/mod.rs`), тож помилку WebView2/WebKitGTK можна зловити і перейти в режим без
+вікна, а не впасти в `expect`. Вікно приховане, доки фронтенд не намалює перший кадр і не викличе `ready`.
 
 Ім'я виконуваного файла після зміни `productName` скрипти збирання беруть з `mainBinaryName` або імені bin cargo і
 перевіряють; активи в `dist/` завжди отримують імена з [розділу 2](#2-артефакти).

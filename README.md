@@ -1,94 +1,138 @@
-# LauncherPrestarter
+# Престартер Asterium
 
-Это престартер для GravitLauncher, написанный на языке Rust с использованием [tauri](https://v2.tauri.app/)
+Маленька програма, яку гравець запускає першою: ставить Java (BellSoft Liberica 25 jre-full з JavaFX) для своєї ОС
+і процесора і запускає лаунчер Asterium (GravitLauncher 5.7.12 з рантаймом Asterium). Tauri 2 (Rust у `src-tauri`,
+Svelte у `src`). Працює на Windows x64 і ARM64, Linux x64 і ARM64 (один файл і AppImage), macOS universal.
 
-## Клонирование репозитория
+Дизайн і рішення: [`docs/crossplatform.md`](docs/crossplatform.md) і [`docs/adr/`](docs/adr/). Зміни:
+[`CHANGELOG.md`](CHANGELOG.md).
 
-```bash
-git clone -b rust/5.7.x https://github.com/GravitLauncher/LauncherPrestarter.git
-```
+## Як це працює
 
-## Подготовка окружения (Windows)
+- **Вбудований jar** (Windows `Asterium*.exe`, Linux `Asterium_linux*`): LaunchServer дописує `Asterium.jar` у кінець
+  сирого престартера; престартер ставить Java і запускає `java -jar <свій файл>`, після чого одразу виходить, щоб Gravit
+  міг оновити цей файл на місці.
+- **Копія jar** (AppImage, macOS `.app`): престартер завантажує `Asterium.jar` з `launcher.asterium.pro` у своє
+  сховище, запускає його і стежить за обгорткою Gravit кілька секунд; оновлює копію сам Gravit. Що в обгортці може
+  застаріти (адреса jar, версія Java, мінімальна версія обгортки), вона бере з підписаної політики
+  `prestarter-policy.json` ([ADR 0001](docs/adr/0001-artifact-matrix-and-jar-delivery.md)).
+- **Сховище:** Windows `%LOCALAPPDATA%\Asterium\Prestarter`, Linux `${XDG_DATA_HOME:-~/.local/share}/asterium/prestarter`,
+  macOS `~/Library/Application Support/Asterium/Prestarter`. Журнали - `logs/prestarter-1.log` (останні 5 запусків) і
+  `logs/launcher-start.log` (вивід обгортки Gravit).
+- **Коди виходу:** 0 - лаунчер запущено; 2 - неправильне перевизначення; 3 - Java; 4 - jar; 5 - бракує бібліотек
+  Linux (вікно називає пакети); 6 - лаунчер не стартував; 7 - обгортка старша за мінімальну; 10 - інше
+  ([ADR 0006](docs/adr/0006-launching-the-launcher.md)).
 
-- Установите [Visual Studio](https://visualstudio.microsoft.com/) (не Vistal Studio Code) с компонентом "Разработка приложений на C++"
-- Следуйте [инструкции](https://rust-lang.org/tools/install/) и по установке окружения для разработки на Rust
-- Установите [NodeJS](https://nodejs.org/en/download/current)
-- Установите yarn с помощью npm
-```bash
-npm install --global yarn
-```
-- Откройте папку с престартером в консоли и выполните следующую команду:
-```
-yarn
-```
+## Розробка
 
-## Отладка и сборка
+Потрібно на будь-якій ОС: Node.js 24 з corepack (yarn 1.22.22 береться з `package.json`), rustup (тулчейн
+`rust-toolchain.toml` - Rust 1.98.1 - ставиться сам при першому `cargo`), Git.
 
-Выполните `yarn tauri dev` что бы запустить престартер в режиме отладки. Престартер всегда в таком случае будет показывать окно скачки (для удобства отладки). Если вам необходимо что бы престартер не начинал скачивание Java, закомментируйте строчку `setTimeout(startDownload, appConfig.download.initialDelay);` в `src/App.svelte`. Не забудьте потом вернуть эту строчку обратно!
-
-Выполните `yarn tauri build` для сборки итогового exe файла. Он будет лежать в `src-tauri/target/release`
-
-## Редактирование дизайна
-
-### Настройка IDE
-
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
-
-### Архитектура проекта
-
-В папке `src` находится исходный код фронтенда(по сути, проект на Svelte который собирается в html/css/js с помощью vite)
-
-В папке `src-tauri` находится исходный код бекенда(явдяющийся Rust приложением)
-
-Полезные ссылки:
-
-- [Svelte](https://svelte.dev/)
-- [Tauri](https://v2.tauri.app/)
-- [Rust](https://rust-lang.org/)
-- [CSS](https://developer.mozilla.org/en-US/docs/Web/CSS)
-- [HTML](https://developer.mozilla.org/en-US/docs/Web/HTML)
-- [JavaScript](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
-
-### Смена иконки
-
-Логотип, отображаемый внутри приложения находится в `src/lib/assets/images/logo.svg`
-
-Для замены лого в панели задач выполните команду
+| ОС | Додатково |
+|---|---|
+| Windows | Visual Studio Build Tools 2022 з «Desktop development with C++»; WebView2 (є у Windows 10 1803+ і 11) |
+| Linux (Debian/Ubuntu) | `sudo apt install build-essential curl file libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev xdg-utils` |
+| Linux (Fedora) | `sudo dnf install webkit2gtk4.1-devel gtk3-devel librsvg2-devel @development-tools` |
+| macOS | Xcode Command Line Tools (`xcode-select --install`) |
 
 ```bash
-yarn tauri icon PATH_TO_ICON_PNG
+corepack enable
+yarn install --frozen-lockfile
+yarn tauri dev                         # вікно з гарячим перезавантаженням фронтенду
+cd src-tauri && cargo test             # модульні та інтеграційні тести (fake-java, локальний HTTPS-сервер)
+cargo clippy --all-targets -- -D warnings && cargo fmt --check
+cd .. && yarn run check && yarn run test   # svelte-check і vitest
 ```
 
-## Релізи (Asterium)
+`yarn tauri dev` і будь-який запуск на столі розробника відкривають справжнє вікно і завантажують справжню Java; щоб
+не чіпати своє сховище, задайте `ASTERIUM_PRESTARTER_STORE` (нижче).
 
-Реліз = push у гілку `release`. Workflow `.github/workflows/publish.yml` (лише Linux-раннери):
+### Тестові перевизначення
 
-1. бере версію з `src-tauri/tauri.conf.json` і **відмовляє, якщо тег `v<версія>` уже існує** ("bump the version"):
-   опублікований реліз ніколи не перезаписується - перед кожним релізом підніміть версію в `tauri.conf.json`,
-   `package.json` і `src-tauri/Cargo.toml`. Версія має бути **вищою за найновіший стабільний реліз** (інакше
-   посилання `/releases/latest` пішло б назад). Перевірка тегу (`scripts/ci/tag-state.sh`) зупиняє запуск і тоді,
-   коли API GitHub не відповів: "тегу немає" - лише точна відповідь 404;
-2. збирає `Prestarter.exe` для Windows на Linux (`scripts/ci/build-windows-exe.sh`, cargo-xwin; той самий скрипт
-   працює локально на будь-якому Linux або в `docker run ubuntu:24.04`);
-3. пише `SHA256SUMS.txt` і `release.json` (`scripts/ci/release-manifest.sh`: репозиторій, компонент `prestarter`,
-   тег, версія, канал, коміт, SHA-256 і розмір файлу), підписує `release.json` ключем Ed25519 із секрету
-   `RELEASE_SIGNING_KEY` (`scripts/ci/sign-release.sh`, з перевіркою проти `.github/release-signing.pub.pem`);
-4. створює draft, завантажує файли й публікує реліз як Latest (версія з `-rc.1` тощо - pre-release, не Latest).
+Релізний бінарник читає рівно чотири змінні середовища ([ADR 0008](docs/adr/0008-loopback-test-endpoints.md)); інших
+перемикачів немає. Неправильне значення - помилка з кодом виходу 2, а не тихий перехід на справжню адресу.
 
-Ключ створює власник один раз: `scripts/make-release-signing-key.sh AsteriaCraft/launcher-prestarter prestarter`
-(секрет + публічний ключ для коміту + рядок для конфігу LaunchServer). Поки `.github/release-signing.pub.pem` не
-закомічено, реліз без секрету виходить **без підпису** з попередженням (LaunchServer із модулем AsteriumReleases його
-не встановить). Щойно публічний ключ закомічено, відсутній секрет **зупиняє** запуск до публікації (як у
-`release.yml` рантайму): інакше версію було б "спалено" релізом, який жоден сервер не прийме.
+| Змінна | Що робить | Допустимі значення |
+|---|---|---|
+| `ASTERIUM_PRESTARTER_JRE_API` | базова адреса API Liberica | лише `http(s)://127.0.0.1:<порт>/…` або `http(s)://[::1]:<порт>/…` |
+| `ASTERIUM_PRESTARTER_LAUNCHER_URL` | адреса jar для режиму копії | те саме |
+| `ASTERIUM_PRESTARTER_STORE` | каталог сховища замість типового | абсолютний шлях |
+| `ASTERIUM_PRESTARTER_NONINTERACTIVE` | `1`: системні діалоги пишуться в журнал замість вікон | `1` або `0` |
 
-Офлайн-підпис ключем власника (секрету в репозиторії немає, `.github/release-signing.pub.pem` НЕ комітиться):
-завантажити `release.json` непідписаного релізу в каталог, `RELEASE_SIGNING_KEY_FILE=key.pem
-RELEASE_SIGNING_PUBKEY=release-signing.pub.pem scripts/ci/sign-release.sh <каталог>` і `gh release upload v<версія>
-<каталог>/release.json.sig` (доки для репозиторію не ввімкнено immutable releases).
+Перші три вмикають у вікні мітку «тестовий режим»; кожне перевизначення пишеться в журнал як `WARN override …`.
+
+### Структура
+
+```
+src-tauri/src/
+  app/       єдине місце, що знає Tauri: вікно, команди, події, режим без вікна
+  flow/      один запуск: що потрібно -> зробити -> запустити лаунчер (без Tauri)
+  jre/       каталог цілей, API Liberica, аварійна таблиця, розпакування, атомарне встановлення
+  jar/       визначення вбудованого jar, перевірка zip, копія jar
+  launch/    команда, чисте середовище, від'єднаний процес, бібліотеки Linux, розбір виходу обгортки
+  policy/    підписана політика обгортки (Ed25519, той самий ключ, що й release.json)
+  store/     шляхи, state.json, блокування, журнали
+  net/       HTTP-клієнти (rustls), завантаження, перевизначення
+  platform/  Windows, Linux/macOS, macOS
+  i18n/      be, en, pl, ru, uk (ті самі JSON читає фронтенд)
+src-tauri/tests/      інтеграційні тести; examples/fake_java.rs - замінник java для них
+src/                  фронтенд (Svelte 5): App.svelte, lib/{components,config,i18n,types,utils}
+tests/fixtures/       Hello.java і FX-проба для smoke; tests/scripts/*.bats - тести скриптів CI
+scripts/ci/           збирання (Windows через cargo-xwin, Linux у контейнері, macOS), DMG, підпис, маніфест
+scripts/smoke/        smoke на рідних раннерах
+```
+
+## CI і релізи (Asterium)
+
+Модель гілок ([ADR 0009](docs/adr/0009-ci-matrix-release-assets-and-manifest.md)): `main` - інтеграційна гілка за
+замовчуванням; зміни - через PR у `main`; реліз - PR `main` → `release`, який зливає лише власник.
+
+- **`ci.yml`** - PR, push у будь-яку гілку крім `release`, ручний запуск: `cargo fmt`, clippy (також для Windows через
+  `cargo xwin clippy`), `cargo test` на `ubuntu-22.04`, `ubuntu-22.04-arm`, `windows-2025`, `windows-11-arm`,
+  `macos-15`; svelte-check, vitest, `cargo deny`, shellcheck, actionlint, bats; збирання всіх семи артефактів
+  (`build.yml`) і smoke на рідних раннерах (`smoke.yml`); для PR у `release` - ще перевірка версії, дати в
+  `CHANGELOG.md` і `release-notes/<версія>.json`. Без секретів і без публікації.
+- **`publish.yml`** - лише push у `release` (злиття PR власником **публікує одразу**):
+  1. версія однакова в `tauri.conf.json`, `package.json`, `src-tauri/Cargo.toml` (і `Cargo.lock`), заголовок
+     `## [X.Y.Z] - YYYY-MM-DD` у `CHANGELOG.md` і та сама дата в `release-notes/X.Y.Z.json`; тег `v<версія>` ще не
+     існує, а версія вища за найновіший стабільний реліз (`scripts/ci/release-checks.sh`, `scripts/ci/tag-state.sh`);
+  2. збирання без кешів (`build.yml`); підпис macOS окремим job з environment `release` (`scripts/ci/macos-signing.sh`:
+     Developer ID, нотаризація і staple `.app` і DMG, коли є всі п'ять секретів `APPLE_*`; без них - ad hoc і
+     `::notice::`; частина секретів - помилка);
+  3. smoke на тих самих байтах (для macOS - на підписаному DMG);
+  4. `SHA256SUMS.txt`, `release.json` (schema 1, кожен актив з `os`, `arch`, `format`, `role`), підписана політика,
+     підпис Ed25519 (`scripts/ci/sign-release.sh`, секрет `RELEASE_SIGNING_KEY`, публічний ключ
+     `.github/release-signing.pub.pem` - він же вшитий у престартер для перевірки політики), атестація походження
+     (поки репозиторій публічний), draft → публікація як Latest (версія з `-rc.1` - pre-release).
+- **`jre-watch.yml`** - щотижня з `main`: оновлює аварійну таблицю JRE окремим PR і відкриває issue, коли в Windows
+  ARM64 jre-full з'явиться WebKit.
+
+Активи релізу: `Prestarter.exe`, `Prestarter-windows-aarch64.exe`, `Prestarter-linux-x86_64`,
+`Prestarter-linux-aarch64` (вхід для LaunchServer), `Asterium-linux-x86_64.AppImage`, `Asterium-linux-aarch64.AppImage`,
+`Asterium-macos-universal.dmg` (готові завантаження), `release-notes.json`, `prestarter-policy.json`, `SHA256SUMS.txt`,
+`release.json`, `release.json.sig`.
+
+Ключ підпису створює власник один раз: `scripts/make-release-signing-key.sh AsteriaCraft/launcher-prestarter prestarter`
+(секрет + публічний ключ для коміту + рядок для конфігу LaunchServer). Офлайн-підпис ключем власника:
+`RELEASE_SIGNING_KEY_FILE=key.pem RELEASE_SIGNING_PUBKEY=release-signing.pub.pem scripts/ci/sign-release.sh <каталог>`.
 
 Перевірити реліз вручну:
 
 ```bash
 sha256sum -c SHA256SUMS.txt
 openssl pkeyutl -verify -rawin -pubin -inkey .github/release-signing.pub.pem -in release.json -sigfile release.json.sig
+gh attestation verify Asterium-macos-universal.dmg -R AsteriaCraft/launcher-prestarter
 ```
+
+### Збирання локально
+
+```bash
+bash scripts/ci/build-windows-exe.sh x86_64      # або aarch64; Linux з clang, lld, llvm (cargo-xwin)
+bash scripts/ci/build-linux.sh docker            # Linux: обидва формати в закріпленому контейнері ubuntu:22.04
+bash scripts/ci/build-macos.sh                   # macOS: universal .app і DMG (ad hoc)
+bash scripts/update-jre-fallback.sh              # оновити src-tauri/src/jre/fallback.json
+```
+
+## Ліцензія
+
+MIT, див. [`LICENSE.txt`](LICENSE.txt). Основано на престартері GravitLauncher (`rust/5.7.x`).
