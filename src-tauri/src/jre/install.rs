@@ -7,6 +7,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 use chrono::Utc;
 use log::{info, warn};
@@ -20,7 +21,7 @@ use super::layout::{self, LayoutError};
 use crate::net::download::{DownloadError, download_to};
 use crate::platform::{self, Os};
 use crate::store::StorePaths;
-use crate::store::atomic::unique_suffix;
+use crate::store::atomic::{rename_patiently, unique_suffix};
 use crate::store::state::JreRecord;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +59,10 @@ pub struct InstalledJre {
     pub home: PathBuf,
     pub record: JreRecord,
 }
+
+/// How long moving the verified JRE into place may wait for a program that holds its files open (a virus scanner,
+/// or on Windows on ARM the x64 emulator's translation cache right after `java -version`).
+const MOVE_PATIENCE: Duration = Duration::from_secs(30);
 
 /// Archive + unpacked JRE + slack: the archive is ~120-150 MB and unpacks to ~3x that.
 pub fn space_needed(archive_size: u64) -> u64 {
@@ -158,10 +163,10 @@ pub fn install(
     let home = paths.jre_home(&dir);
     if home.exists() {
         let trash = paths.jre_dir().join(format!(".trash-{}", unique_suffix()));
-        fs::rename(&home, &trash)?;
+        rename_patiently(&home, &trash, MOVE_PATIENCE)?;
         let _ = fs::remove_dir_all(&trash);
     }
-    fs::rename(&root, &home)?;
+    rename_patiently(&root, &home, MOVE_PATIENCE)?;
 
     #[cfg(target_os = "macos")]
     match crate::platform::macos::strip_quarantine(&home) {
