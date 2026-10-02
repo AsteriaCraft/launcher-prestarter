@@ -1,0 +1,162 @@
+# Builds every artifact of a release (ADR 0009) and uploads it; called by ci.yml (with caches) and publish.yml
+# (without). Never sees a secret: macOS is signed ad hoc here; Developer ID signing is publish.yml's sign-macos job.
+#
+#   prestarter-windows-x86_64   dist/Prestarter.exe                     (ubuntu-24.04, cargo-xwin)
+#   prestarter-windows-aarch64  dist/Prestarter-windows-aarch64.exe     (ubuntu-24.04, cargo-xwin)
+#   prestarter-linux-x86_64     dist/Prestarter-linux-x86_64 + dist/Asterium-linux-x86_64.AppImage   (ubuntu-24.04,
+#                               pinned ubuntu:22.04 container, AppImage step offline)
+#   prestarter-linux-aarch64    the same for aarch64                    (ubuntu-24.04-arm)
+#   asterium-macos              dist/Asterium-macos-universal.dmg + dist/Asterium.app.tar (macos-15)
+#   smoke-fixtures              dist/fixtures/Hello.jar, FxProbe.jar    (Liberica JDK 17 + FX)
+# All actions are pinned to full commit SHAs (tag in the comment).
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      cache:
+        description: Use the cargo, xwin and yarn caches (never in publish.yml)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows ${{ matrix.arch }} (cargo-xwin)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    env:
+      XWIN_CACHE_DIR: ${{ github.workspace }}/.tools/xwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: LLVM toolchain for the MSVC cross build
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends clang lld llvm
+          rustup show active-toolchain
+      - name: Cache cargo and xwin
+        if: inputs.cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/bin/cargo-xwin
+            src-tauri/target
+            .tools/xwin
+          key: build-windows-${{ matrix.arch }}-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml', 'scripts/ci/build-windows-exe.sh') }}
+          restore-keys: build-windows-${{ matrix.arch }}-
+      - name: Build
+        run: bash scripts/ci/build-windows-exe.sh "${{ matrix.arch }}"
+      - name: Size and sha256
+        run: |
+          for f in dist/*.exe; do echo "$f $(stat -c %s "$f") bytes sha256 $(sha256sum "$f" | cut -d' ' -f1)"; done | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: prestarter-windows-${{ matrix.arch }}
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    name: Linux ${{ matrix.arch }} (single file + AppImage)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build in the pinned Ubuntu 22.04 image (AppImage step with --network none)
+        run: bash scripts/ci/build-linux.sh docker
+      - name: Size and sha256
+        run: |
+          for f in dist/Prestarter-linux-* dist/Asterium-linux-*.AppImage; do
+            echo "$f $(stat -c %s "$f") bytes sha256 $(sha256sum "$f" | cut -d' ' -f1)"
+          done | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: prestarter-linux-${{ matrix.arch }}
+          path: |
+            dist/Prestarter-linux-${{ matrix.arch }}
+            dist/Asterium-linux-${{ matrix.arch }}.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    name: macOS universal (app + DMG, ad hoc)
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Cache cargo
+        if: inputs.cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            src-tauri/target
+          key: build-macos-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: build-macos-
+      - name: Build
+        run: bash scripts/ci/build-macos.sh
+      - name: Keep the app with its permissions for signing and smoke
+        run: |
+          tar -C dist -cf dist/Asterium.app.tar Asterium.app
+          for f in dist/Asterium-macos-universal.dmg dist/Asterium.app.tar; do
+            echo "$f $(stat -f %z "$f") bytes sha256 $(shasum -a 256 "$f" | cut -d' ' -f1)"
+          done | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: asterium-macos
+          path: |
+            dist/Asterium-macos-universal.dmg
+            dist/Asterium.app.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  fixtures:
+    name: Smoke fixtures (Hello.jar, FxProbe.jar)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: liberica
+          java-version: "17"
+          java-package: jdk+fx
+      - name: Build
+        run: bash scripts/smoke/build-fixtures.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-fixtures
+          path: dist/fixtures/*.jar
+          if-no-files-found: error
+          retention-days: 7

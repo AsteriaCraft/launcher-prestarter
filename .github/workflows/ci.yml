@@ -1,0 +1,209 @@
+# Checks, tests, builds and smoke-tests every change (ADR 0009). Runs on pull requests, on pushes to every branch
+# except `release` (publish.yml owns that one), and on demand (jre-watch.yml dispatches it for its own PRs, because a
+# PR opened with GITHUB_TOKEN starts no pull_request run). Never publishes, never sees a secret.
+# All actions are pinned to full commit SHAs (tag in the comment).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - release
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  gate:
+    name: Gate (skip a push the open PR already covers)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = push ] && [ "$BRANCH" != main ]; then
+            open="$(gh pr list --head "$BRANCH" --state open --json number --jq length)"
+            if [ "$open" != 0 ]; then
+              run=false
+              echo "::notice::$BRANCH has an open pull request; its pull_request run does the work"
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  lint:
+    name: Lint (fmt, scripts, workflows, front end, deny, release gate)
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Tools (shellcheck, bats, actionlint, cargo-deny; pinned and checksummed)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends shellcheck bats
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tgz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tgz" -C "$RUNNER_TEMP/bin" actionlint
+          curl -fsSL -o "$RUNNER_TEMP/deny.tgz" https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz
+          echo "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f  $RUNNER_TEMP/deny.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/deny.tgz" -C "$RUNNER_TEMP/bin" --strip-components=1 cargo-deny-0.20.2-x86_64-unknown-linux-musl/cargo-deny
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --check
+      - name: The core does not depend on Tauri
+        run: |
+          if grep -rn --include='*.rs' -E '\btauri(_plugin_[a-z]+)?::' src-tauri/src/{flow,i18n,jar,jre,launch,net,platform,policy,store}; then
+            echo "::error::Tauri is used outside src-tauri/src/app (crossplatform.md 4.1)"
+            exit 1
+          fi
+      - name: shellcheck
+        run: shellcheck scripts/*.sh scripts/ci/*.sh scripts/smoke/*.sh
+      - name: actionlint
+        run: actionlint
+      - name: bats
+        run: bats tests/scripts
+      - name: Release gate (version, changelog, release notes)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$BASE_REF" = release ]; then
+            bash scripts/ci/release-checks.sh --release
+          else
+            bash scripts/ci/release-checks.sh
+          fi
+      - name: cargo deny
+        working-directory: src-tauri
+        run: cargo deny --locked check
+      - name: Front end (svelte-check, vitest)
+        run: |
+          corepack enable
+          yarn install --frozen-lockfile
+          yarn run check
+          yarn run test
+
+  rust:
+    name: Rust ${{ matrix.runner }} (clippy, unit and integration tests)
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-22.04-arm, windows-2025, windows-11-arm, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tauri's Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev
+      - name: Toolchain
+        shell: bash
+        run: rustup show active-toolchain && rustc --version
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.runner }}
+      - name: clippy
+        working-directory: src-tauri
+        shell: bash
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Tests
+        working-directory: src-tauri
+        shell: bash
+        run: |
+          # The exit code is cargo's own (no pipe); the log is printed and summarised afterwards.
+          rc=0
+          cargo test --locked > "$RUNNER_TEMP/test.log" 2>&1 || rc=$?
+          cat "$RUNNER_TEMP/test.log"
+          awk -v rc="$rc" -v runner="${{ matrix.runner }}" '/^test result:/ {p+=$4; f+=$6} END {printf "cargo test on %s: %d passed, %d failed (exit %s)\n", runner, p, f, rc}' "$RUNNER_TEMP/test.log" >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+  xwin-clippy:
+    name: clippy for Windows targets (cargo xwin)
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      XWIN_CACHE_DIR: ${{ github.workspace }}/.tools/xwin
+      XWIN_CRT_VERSION: 14.44.17.14
+      XWIN_SDK_VERSION: 10.0.26100
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: LLVM and cargo-xwin
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends clang lld llvm
+          cargo install --locked cargo-xwin --version 0.23.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          key: xwin
+      - name: clippy (x86_64 and aarch64 Windows)
+        working-directory: src-tauri
+        run: |
+          cargo xwin clippy --locked --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+          cargo xwin clippy --locked --all-targets --target aarch64-pc-windows-msvc -- -D warnings
+
+  build:
+    name: Build
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      cache: true
+
+  smoke:
+    name: Smoke
+    needs: build
+    uses: ./.github/workflows/smoke.yml
+
+  macos-signing:
+    name: macOS signing path (self-signed self-test)
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: asterium-macos
+          path: dist
+      - name: Self-test and dry run
+        run: |
+          tar -xf dist/Asterium.app.tar -C dist
+          bash scripts/ci/macos-signing.sh self-test dist/Asterium.app "$RUNNER_TEMP/selftest.dmg"
+          bash scripts/ci/macos-signing.sh check-secrets

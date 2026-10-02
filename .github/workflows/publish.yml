@@ -1,25 +1,24 @@
-# Release pipeline for Prestarter.exe. Works the same in a PRIVATE repository and runs on Linux runners only.
-#
-# Trigger: a push to the `release` branch. The version comes from src-tauri/tauri.conf.json and the release is the
-# tag v<version>. A version that already has a tag or a published release is NEVER overwritten, and a version that is
-# not above the newest stable release is never published: the run fails and asks for a version bump. (The
-# LaunchServer module AsteriumReleases refuses a tag whose content changes and never goes below the highest version it
-# installed, and players must never get two different builds under one version.)
+# Release pipeline (ADR 0009). Trigger: a push to `release` (the owner merges the main -> release PR). The version
+# comes from src-tauri/tauri.conf.json and the release is the tag v<version>. A version that already has a tag or a
+# published release is NEVER overwritten, and a version that is not above the newest stable release is never
+# published: the run fails and asks for a version bump. (The LaunchServer module AsteriumReleases refuses a tag whose
+# content changes and never goes below the highest version it installed, and players must never get two different
+# builds under one version.)
 #
 # Jobs, each with only the permissions it needs; no caches anywhere, so nothing another branch can write reaches a
 # signed binary:
-#   version  - read the version, refuse an existing tag/release or a version not above the newest  contents: read
-#   build    - cross-compile Prestarter.exe on Linux (scripts/ci/build-windows-exe.sh, cargo-xwin)   contents: read
-#   publish  - SHA256SUMS.txt + release.json, Ed25519 signature, draft -> upload -> publish        contents: write
-#              first-party steps only; the signing key is never available to the build job.
+#   version     - one version everywhere, dated CHANGELOG.md + release notes, refuse an existing or lower tag
+#   build       - build.yml: all seven artifacts (macOS signed ad hoc)                          contents: read
+#   sign-macos  - environment `release`: Developer ID + notarization of the app and the DMG when all five APPLE_*
+#                 secrets exist, otherwise the ad hoc DMG with a notice; some-but-not-all fails   contents: read
+#   smoke       - smoke.yml on exactly these bytes (the signed DMG for macOS)                    contents: read
+#   publish     - environment `release`: SHA256SUMS.txt, release.json with per-asset metadata, the signed policy,
+#                 Ed25519 signature, build provenance attestation (public repository), draft -> upload -> publish
 #
-# Secret RELEASE_SIGNING_KEY (a REPOSITORY secret: org and environment secrets do not reach private repositories on
-# GitHub Free): ONE line of base64 of the Ed25519 private key in DER form (scripts/make-release-signing-key.sh stores it
-# so; sign-release.sh also accepts base64 of the PEM, or the PEM itself), with
-# its public half committed as .github/release-signing.pub.pem. Same rule as the runtime's release.yml: before the
-# public key is committed, a release without the secret is published UNSIGNED with a warning (a LaunchServer running
-# AsteriumReleases refuses to install it); once the public key is committed, a missing secret fails the run before
-# anything is published.
+# Secrets: RELEASE_SIGNING_KEY (repository or environment `release`; one line of base64 of the Ed25519 private key in
+# DER form, see scripts/make-release-signing-key.sh; its public half is .github/release-signing.pub.pem and is
+# compiled into the prestarter for the policy check); APPLE_* only in environment `release`. Once the public key is
+# committed, a missing signing secret fails the run before anything is published.
 # All actions are pinned to full commit SHAs (tag in the comment).
 name: publish
 
@@ -48,26 +47,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read the version and refuse to overwrite a published one
+      - name: One version, dated changelog, release notes; refuse to overwrite or go back
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          version="$(jq -r .version src-tauri/tauri.conf.json)"
-          # The same rule as scripts/ci/release-manifest.sh and the LaunchServer module (no +build metadata), checked
-          # here so a bad version fails in seconds, not after the build.
-          num='(0|[1-9][0-9]*)'
-          ident='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
-          if ! [[ "$version" =~ ^$num\.$num\.$num(-$ident(\.$ident)*)?$ ]]; then
-            echo "::error::src-tauri/tauri.conf.json version '$version' is not MAJOR.MINOR.PATCH[-PRERELEASE]"
-            exit 1
-          fi
-          cargo_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' src-tauri/Cargo.toml | head -1)"
-          package_version="$(jq -r .version package.json)"
-          if [ "$cargo_version" != "$version" ] || [ "$package_version" != "$version" ]; then
-            echo "::warning::versions differ: tauri.conf.json $version, Cargo.toml $cargo_version, package.json $package_version (tauri.conf.json is used)"
-          fi
+          version="$(bash scripts/ci/release-checks.sh --release)"
           # Fails closed: only a definite 404 counts as "not released yet".
           state="$(bash scripts/ci/tag-state.sh "$GH_REPO" "v$version")" || exit 1
           if [ "$state" != absent ]; then
@@ -88,46 +74,66 @@ jobs:
           echo "Releasing v$version"
 
   build:
-    name: Build Prestarter.exe (Linux, cargo-xwin)
+    name: Build
     needs: version
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    uses: ./.github/workflows/build.yml
+    with:
+      cache: false
+
+  sign-macos:
+    name: macOS signing (environment release)
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: release
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          node-version: 24
-          package-manager-cache: false
-
-      - name: Toolchain (Rust stable, clang, lld, llvm)
+          name: asterium-macos
+          path: dist
+      - name: Sign, notarize and staple (or keep the ad hoc build with a notice)
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends clang lld llvm
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-
-      - name: Build
-        run: bash scripts/ci/build-windows-exe.sh
-
+          tar -xf dist/Asterium.app.tar -C dist
+          bash scripts/ci/macos-signing.sh auto dist/Asterium.app dist/Asterium-macos-universal.dmg
+          tar -C dist -cf dist/Asterium.app.tar Asterium.app
+          echo "dist/Asterium-macos-universal.dmg $(stat -f %z dist/Asterium-macos-universal.dmg) bytes sha256 $(shasum -a 256 dist/Asterium-macos-universal.dmg | cut -d' ' -f1)" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: prestarter-exe
-          path: dist/Prestarter.exe
+          name: asterium-macos-release
+          path: |
+            dist/Asterium-macos-universal.dmg
+            dist/Asterium.app.tar
           if-no-files-found: error
           retention-days: 7
 
+  smoke:
+    name: Smoke
+    needs: sign-macos
+    uses: ./.github/workflows/smoke.yml
+    with:
+      macos-artifact: asterium-macos-release
+
   publish:
-    name: Checksums, signature, release
-    needs: [version, build]
+    name: Checksums, signatures, attestation, release
+    needs: [version, build, sign-macos, smoke]
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
+    environment: release
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -140,11 +146,34 @@ jobs:
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: prestarter-exe
+          pattern: prestarter-*
+          merge-multiple: true
           path: dist
 
-      - name: SHA256SUMS.txt and release.json
-        run: bash scripts/ci/release-manifest.sh dist "$GITHUB_REPOSITORY" prestarter "$VERSION" "$GITHUB_SHA" Prestarter.exe
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: asterium-macos-release
+          path: dist
+
+      - name: Release notes and the signed policy
+        run: |
+          cp "release-notes/${VERSION%%-*}.json" dist/release-notes.json
+          bash scripts/ci/make-policy.sh "$VERSION" dist/prestarter-policy.json
+          rm -f dist/Asterium.app.tar
+          ls -l dist
+
+      - name: SHA256SUMS.txt and release.json (schema 1, per-asset os/arch/format/role)
+        run: |
+          bash scripts/ci/release-manifest.sh dist "$GITHUB_REPOSITORY" prestarter "$VERSION" "$GITHUB_SHA" \
+            Prestarter.exe:windows:x86_64:exe:prestarter \
+            Prestarter-windows-aarch64.exe:windows:aarch64:exe:prestarter \
+            Prestarter-linux-x86_64:linux:x86_64:elf:prestarter \
+            Prestarter-linux-aarch64:linux:aarch64:elf:prestarter \
+            Asterium-linux-x86_64.AppImage:linux:x86_64:appimage:download \
+            Asterium-linux-aarch64.AppImage:linux:aarch64:appimage:download \
+            Asterium-macos-universal.dmg:macos:universal:dmg:download \
+            release-notes.json:-:-:json:notes \
+            prestarter-policy.json:-:-:json:policy
 
       - name: Sign release.json (Ed25519)
         env:
@@ -167,7 +196,23 @@ jobs:
             exit "$rc"
           fi
 
-      - name: Publish (draft, upload, then publish as latest)
+      - name: Build provenance attestation
+        if: github.event.repository.visibility == 'public'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/Prestarter.exe
+            dist/Prestarter-windows-aarch64.exe
+            dist/Prestarter-linux-x86_64
+            dist/Prestarter-linux-aarch64
+            dist/Asterium-linux-x86_64.AppImage
+            dist/Asterium-linux-aarch64.AppImage
+            dist/Asterium-macos-universal.dmg
+            dist/release-notes.json
+            dist/prestarter-policy.json
+            dist/release.json
+
+      - name: Publish (draft, upload, then publish)
         run: |
           # Never overwrite: an existing tag fails the run. A draft left by an earlier failed run was never public
           # and is replaced. The tag lookup fails closed (scripts/ci/tag-state.sh).
@@ -180,22 +225,29 @@ jobs:
             echo "::notice::Replacing the unpublished draft $TAG left by an earlier failed run"
             gh release delete "$TAG" --yes
           fi
-          assets=(dist/Prestarter.exe dist/SHA256SUMS.txt dist/release.json)
+          assets=(dist/Prestarter.exe dist/Prestarter-windows-aarch64.exe dist/Prestarter-linux-x86_64 dist/Prestarter-linux-aarch64
+                  dist/Asterium-linux-x86_64.AppImage dist/Asterium-linux-aarch64.AppImage dist/Asterium-macos-universal.dmg
+                  dist/release-notes.json dist/prestarter-policy.json dist/SHA256SUMS.txt dist/release.json)
           signature="unsigned"
           if [ -f dist/release.json.sig ]; then
             assets+=(dist/release.json.sig)
             signature="release.json.sig (Ed25519)"
           fi
-          sha="$(cut -d' ' -f1 dist/SHA256SUMS.txt)"
-          notes="$(printf '%s\n' \
-            "Prestarter.exe built on Linux (cargo-xwin, x86_64-pc-windows-msvc) from ${GITHUB_SHA::7}." \
-            "" \
-            "SHA-256: \`$sha\`" \
-            "Signed manifest: release.json, signature: $signature." \
-            "Verify: \`sha256sum -c SHA256SUMS.txt\` and \`openssl pkeyutl -verify -rawin -pubin -inkey .github/release-signing.pub.pem -in release.json -sigfile release.json.sig\`.")"
+          {
+            echo "Asterium prestarter $TAG, built from ${GITHUB_SHA::7}."
+            echo
+            echo "| Asset | Role | SHA-256 |"
+            echo "|---|---|---|"
+            jq -r '.assets[] | "| \(.name) | \(.role // "-") | `\(.sha256)` |"' dist/release.json
+            echo
+            echo "Signed manifest: release.json, signature: $signature."
+            echo "Verify: \`sha256sum -c SHA256SUMS.txt\`, \`openssl pkeyutl -verify -rawin -pubin -inkey .github/release-signing.pub.pem -in release.json -sigfile release.json.sig\`, \`gh attestation verify <file> -R $GH_REPO\`."
+            echo
+            echo "Player notes (uk/en): release-notes.json. Developer changelog: CHANGELOG.md."
+          } > "$RUNNER_TEMP/notes.md"
           # A -suffix version (0.3.0-rc.1) is a pre-release: never "latest", so production LaunchServers ignore it.
           kind=(--latest)
           case "$VERSION" in *-*) kind=(--prerelease --latest=false) ;; esac
-          gh release create "$TAG" "${assets[@]}" --draft --target "$GITHUB_SHA" --title "Prestarter $TAG" --notes "$notes" "${kind[@]}"
+          gh release create "$TAG" "${assets[@]}" --draft --target "$GITHUB_SHA" --title "Prestarter $TAG" --notes-file "$RUNNER_TEMP/notes.md" "${kind[@]}"
           gh release edit "$TAG" --draft=false "${kind[@]}"
           echo "Published $TAG ($signature)"

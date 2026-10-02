@@ -1,0 +1,173 @@
+# Runs the built artifacts on their native runners (ADR 0006, 0008, 0009): the real Liberica API and download, the
+# launcher played by the FX probe (a Gravit-like wrapper plus a JavaFX/WebView window), screenshots, logs. Called by
+# ci.yml and publish.yml after build.yml in the same run; publish.yml passes the signed DMG. No secrets.
+name: smoke
+
+on:
+  workflow_call:
+    inputs:
+      macos-artifact:
+        description: Artifact with Asterium-macos-universal.dmg
+        type: string
+        default: asterium-macos
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    name: Windows x64 (Cyrillic path, default store, no WebView2)
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: prestarter-windows-x86_64
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: smoke-fixtures
+          path: dist/fixtures
+      - name: Embedded jar from a Cyrillic path with the default store
+        run: bash scripts/smoke/smoke-embedded.sh dist/Prestarter.exe windows-x64 amd64 default-store
+      - name: Without WebView2 (empty WEBVIEW2_BROWSER_EXECUTABLE_FOLDER)
+        run: bash scripts/smoke/smoke-embedded.sh dist/Prestarter.exe windows-x64-no-webview2 amd64 no-webview
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: smoke-windows-x64
+          path: smoke-out
+          retention-days: 7
+
+  windows-arm64:
+    name: Windows on ARM (ARM64 and x64 builds, x64 JRE)
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: prestarter-windows-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: smoke-fixtures
+          path: dist/fixtures
+      - name: ARM64 build (installs the x64 JRE, ADR 0004)
+        run: bash scripts/smoke/smoke-embedded.sh dist/Prestarter-windows-aarch64.exe windows-arm64-native amd64
+      - name: x64 build under emulation (what ARM players download)
+        run: bash scripts/smoke/smoke-embedded.sh dist/Prestarter.exe windows-arm64-x64 amd64
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: smoke-windows-arm64
+          path: smoke-out
+          retention-days: 7
+
+  linux:
+    name: Linux ${{ matrix.arch }} (single file, AppImage)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            java-arch: amd64
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            java-arch: aarch64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: prestarter-linux-${{ matrix.arch }}
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: smoke-fixtures
+          path: dist/fixtures
+      - name: Desktop libraries (WebKitGTK for the single file, GTK 3 + libXtst for JavaFX), Xvfb, screenshots
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends xvfb xauth imagemagick libwebkit2gtk-4.1-0 libgtk-3-0t64 libxtst6 libasound2t64
+          chmod +x dist/Prestarter-linux-* dist/Asterium-linux-*.AppImage
+      - name: Single file with the embedded jar
+        run: xvfb-run -a -s "-screen 0 1280x800x24" bash scripts/smoke/smoke-embedded.sh "dist/Prestarter-linux-${{ matrix.arch }}" "linux-${{ matrix.arch }}" "${{ matrix.java-arch }}"
+      - name: AppImage with the jar copy
+        run: xvfb-run -a -s "-screen 0 1280x800x24" bash scripts/smoke/smoke-appimage.sh "dist/Asterium-linux-${{ matrix.arch }}.AppImage" "appimage-${{ matrix.arch }}" "${{ matrix.java-arch }}"
+      - name: Bare Ubuntu 24.04 container (exit 127, package hint, then the launcher)
+        if: matrix.arch == 'x86_64'
+        run: bash scripts/smoke/smoke-bare-linux.sh dist/Prestarter-linux-x86_64 dist/Asterium-linux-x86_64.AppImage
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: smoke-linux-${{ matrix.arch }}
+          path: smoke-out
+          retention-days: 7
+
+  wayland:
+    name: Linux single file on Wayland (weston, no tao fork)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: prestarter-linux-x86_64
+          path: dist
+      - name: Weston and WebKitGTK
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends weston libwebkit2gtk-4.1-0
+          chmod +x dist/Prestarter-linux-x86_64
+      - name: Screenshot of the window on Wayland
+        run: bash scripts/smoke/smoke-wayland.sh dist/Prestarter-linux-x86_64
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: smoke-wayland
+          path: smoke-out
+          retention-days: 7
+
+  macos:
+    name: macOS DMG (arm64 and Rosetta)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.macos-artifact }}
+          path: dist
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: smoke-fixtures
+          path: dist/fixtures
+      - name: Mount, Gatekeeper, codesign, both slices
+        run: bash scripts/smoke/smoke-macos.sh dist/Asterium-macos-universal.dmg
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: smoke-macos
+          path: smoke-out
+          retention-days: 7
