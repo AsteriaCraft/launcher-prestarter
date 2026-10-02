@@ -140,7 +140,11 @@ EOF
   [ -n "$identity" ] || { security find-identity -p codesigning "$keychain"; die "the self-test identity is not usable"; }
   codesign --force --options runtime --timestamp=none --sign "$identity" "$copy"
   codesign --verify --strict --deep -vv "$copy"
-  codesign -dv "$copy" 2>&1 | grep -q "Authority=Asterium Self-Test Code Signing" || die "the copy is not signed by the test identity"
+  # Captured first: `codesign | grep -q` can end in SIGPIPE, which pipefail reports as a failure.
+  local details
+  details="$(codesign -dvv "$copy" 2>&1)"
+  echo "$details" | sed -n '/^Authority=/p; /^TeamIdentifier=/p; /^Runtime Version=/p; /flags=/p'
+  grep -q "^Authority=Asterium Self-Test Code Signing" <<< "$details" || die "the copy is not signed by the test identity"
   bash "$here/make-dmg.sh" "$copy" "$dmg"
   codesign --force --timestamp=none --sign "$identity" "$dmg"
   codesign --verify -vv "$dmg"
