@@ -246,10 +246,30 @@ impl Session {
         }
     }
 
+    /// Windows: Java reads its command line in the ANSI code page, so a jar or JRE under a name that code page cannot
+    /// write would fail inside Java ("Unable to access jarfile" with `?` in the path), and so would Gravit's own
+    /// relaunch. Refused up front with a sentence that says what to do, before 130 MB of Java are downloaded.
+    fn path_encoding_error(&self) -> Option<FlowError> {
+        let jar = self.jar.as_ref().ok()?.path().to_path_buf();
+        let jre_dir = self.ctx.paths.jre_dir();
+        [jar.as_path(), jre_dir.as_path()].into_iter().find_map(|path| {
+            crate::platform::java_cannot_write(path).map(|code_page| {
+                FlowError::new(
+                    ErrorKind::PathEncoding,
+                    format!("the ANSI code page {code_page} cannot write {}", path.display()),
+                )
+                .param("path", path.display().to_string())
+            })
+        })
+    }
+
     /// Decides what this start needs. Network only for the weekly JRE check and the daily policy (3 s each).
     pub fn plan(&mut self) -> Plan {
         if let Err(err) = &self.jar {
             return Plan::Fail(err.clone());
+        }
+        if let Some(err) = self.path_encoding_error() {
+            return Plan::Fail(err);
         }
         let mut work = Work::default();
         if self.is_copy_mode() {

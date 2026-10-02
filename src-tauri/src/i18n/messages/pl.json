@@ -38,6 +38,7 @@
   "error.missingLibs": "Launcherowi brakuje bibliotek systemowych. Zainstaluj je i uruchom Asterium ponownie:",
   "error.missingLibsUnknown": "Launcherowi brakuje bibliotek systemowych: {libraries}.",
   "error.launchFailed": "Launcher się nie uruchomił.",
+  "error.pathEncoding": "Java nie może otworzyć „{path}”: nazwa zawiera litery, których nie zna język Windows dla programów bez Unicode. Przenieś Asterium do folderu z samymi literami łacińskimi (na przykład C:\\Games\\Asterium) albo zmień w Windows „Język dla programów nieobsługujących standardu Unicode”.",
   "error.wrapperTooOld": "Ta wersja Asterium jest nieaktualna. Pobierz nową ze strony.",
   "error.store": "Nie udało się utworzyć folderu Asterium: {path}.",
   "error.internal": "Wystąpił nieoczekiwany błąd.",

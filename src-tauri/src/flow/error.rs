@@ -17,6 +17,8 @@ pub enum ErrorKind {
     EmbeddedCorrupt,
     MissingLibs,
     LaunchFailed,
+    /// Windows: the jar or the JRE lies under a name the ANSI code page cannot write, so Java would get `?` instead.
+    PathEncoding,
     WrapperTooOld,
     Internal,
 }
@@ -27,7 +29,7 @@ impl ErrorKind {
             ErrorKind::JreDownload | ErrorKind::JreInstall | ErrorKind::NoSpace => 3,
             ErrorKind::JarDownload | ErrorKind::JarCorrupt | ErrorKind::EmbeddedCorrupt => 4,
             ErrorKind::MissingLibs => 5,
-            ErrorKind::LaunchFailed => 6,
+            ErrorKind::LaunchFailed | ErrorKind::PathEncoding => 6,
             ErrorKind::WrapperTooOld => 7,
             ErrorKind::Store | ErrorKind::Internal => 10,
         }
@@ -44,14 +46,16 @@ impl ErrorKind {
             ErrorKind::EmbeddedCorrupt => "error.embeddedCorrupt",
             ErrorKind::MissingLibs => "error.missingLibs",
             ErrorKind::LaunchFailed => "error.launchFailed",
+            ErrorKind::PathEncoding => "error.pathEncoding",
             ErrorKind::WrapperTooOld => "error.wrapperTooOld",
             ErrorKind::Internal => "error.internal",
         }
     }
 
-    /// Whether "Try again" can help (a network hiccup can pass; a damaged file or an old wrapper cannot).
+    /// Whether "Try again" can help (a network hiccup can pass; a damaged file, an old wrapper or a folder name Java
+    /// cannot read cannot).
     pub fn retryable(self) -> bool {
-        !matches!(self, ErrorKind::EmbeddedCorrupt | ErrorKind::WrapperTooOld)
+        !matches!(self, ErrorKind::EmbeddedCorrupt | ErrorKind::WrapperTooOld | ErrorKind::PathEncoding)
     }
 }
 
@@ -123,6 +127,7 @@ mod tests {
         assert_eq!(ErrorKind::EmbeddedCorrupt.exit_code(), 4);
         assert_eq!(ErrorKind::MissingLibs.exit_code(), 5);
         assert_eq!(ErrorKind::LaunchFailed.exit_code(), 6);
+        assert_eq!(ErrorKind::PathEncoding.exit_code(), 6);
         assert_eq!(ErrorKind::WrapperTooOld.exit_code(), 7);
         assert_eq!(ErrorKind::Internal.exit_code(), 10);
     }
@@ -148,5 +153,15 @@ mod tests {
         assert!(ErrorKind::JarDownload.retryable());
         assert!(!ErrorKind::EmbeddedCorrupt.retryable());
         assert!(!ErrorKind::WrapperTooOld.retryable());
+        assert!(!ErrorKind::PathEncoding.retryable());
+    }
+
+    #[test]
+    fn a_path_java_cannot_read_names_the_path_and_the_way_out() {
+        let err = FlowError::new(ErrorKind::PathEncoding, "x").param("path", r"D:\Ігри\Asterium.exe");
+        let text = err.message(Lang::En);
+        assert!(text.contains(r"D:\Ігри\Asterium.exe"), "{text}");
+        assert!(text.contains(r"C:\Games\Asterium"), "{text}");
+        assert!(text.ends_with("Error code: 6"), "{text}");
     }
 }

@@ -23,6 +23,15 @@ use prestarter_lib::store::StorePaths;
 use prestarter_lib::store::atomic::unique_suffix;
 use reqwest::Url;
 
+/// A folder name with letters beyond ASCII that Java on this machine can still read: Cyrillic; on a Windows whose
+/// ANSI code page has no Cyrillic (GitHub's runners use 1252), Latin letters with diacritics; plain ASCII last.
+pub fn readable_folder() -> &'static str {
+    ["Ігри з пробілом", "Spiele für alle", "Games"]
+        .into_iter()
+        .find(|name| prestarter_lib::platform::java_cannot_write(Path::new(name)).is_none())
+        .expect("ASCII is always readable")
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Temporary directories
 
@@ -361,12 +370,17 @@ impl Fixture {
         path
     }
 
-    /// A file with the test jar appended (embedded mode), named like the server's build.
+    /// A file with the test jar appended (embedded mode), named like the server's build, in a folder with letters
+    /// beyond ASCII ([`readable_folder`]).
     pub fn embedded_exe(&self) -> PathBuf {
+        self.embedded_exe_in(readable_folder())
+    }
+
+    pub fn embedded_exe_in(&self, folder: &str) -> PathBuf {
         let mut bytes = vec![0x4du8, 0x5a];
         bytes.extend(vec![0u8; 8192]);
         bytes.extend(test_jar());
-        let path = self.dir.path().join("Ігри").join("Asterium.exe");
+        let path = self.dir.path().join(folder).join("Asterium.exe");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, bytes).unwrap();
         path

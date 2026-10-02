@@ -38,6 +38,7 @@
   "error.missingLibs": "Лаўнчару не хапае сістэмных бібліятэк. Усталюйце іх і запусціце Asterium зноў:",
   "error.missingLibsUnknown": "Лаўнчару не хапае сістэмных бібліятэк: {libraries}.",
   "error.launchFailed": "Лаўнчар не запусціўся.",
+  "error.pathEncoding": "Java не можа адкрыць «{path}»: у назве ёсць літары, якіх не ведае мова Windows для праграм без Юнікоду. Перанясіце Asterium у папку з лацінскімі літарамі (напрыклад, C:\\Games\\Asterium) або змяніце ў Windows «Мову праграм, якія не падтрымліваюць Юнікод».",
   "error.wrapperTooOld": "Гэтая версія Asterium састарэла. Спампуйце новую з сайта.",
   "error.store": "Не ўдалося стварыць каталог Asterium: {path}.",
   "error.internal": "Здарылася нечаканая памылка.",

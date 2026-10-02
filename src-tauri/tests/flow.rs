@@ -288,6 +288,34 @@ fn a_damaged_embedded_jar_is_refused_before_anything_else() {
     assert!(fx.server.hits().is_empty());
 }
 
+/// Java on Windows reads its command line in the ANSI code page: a jar under a name that code page cannot write is
+/// refused with a sentence that says what to do, before anything is downloaded. Elsewhere the same path just works.
+#[test]
+fn a_jar_under_a_name_java_cannot_read_is_refused_before_any_download() {
+    let fx = Fixture::new("ansi");
+    // U+1F600 is in no ANSI code page; only the UTF-8 one ("Beta: Use Unicode UTF-8") writes it.
+    let exe = fx.embedded_exe_in("Ігри \u{1F600}");
+    let mut session = Session::open(fx.context(exe.clone(), "stay", &[], false)).unwrap();
+    let plan = session.plan();
+    let refused = prestarter_lib::platform::ansi_code_page().is_some_and(|code_page| code_page != 65001);
+    if refused {
+        match plan {
+            Plan::Fail(err) => {
+                assert_eq!(err.kind, ErrorKind::PathEncoding);
+                assert_eq!(err.exit_code(), 6);
+                assert!(!err.kind.retryable());
+                let text = err.message(prestarter_lib::i18n::Lang::Uk);
+                assert!(text.contains(&exe.display().to_string()), "{text}");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    } else {
+        assert!(matches!(plan, Plan::Window(_)), "{plan:?}");
+    }
+    assert!(fx.server.hits().is_empty());
+    assert_eq!(fx.runs(), 0);
+}
+
 #[test]
 fn the_appimage_environment_never_reaches_the_launcher() {
     let fx = Fixture::new("appimage");

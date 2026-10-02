@@ -1,5 +1,5 @@
-//! Windows: native message boxes (used when there is no WebView2), x64 emulation on ARM64, free disk space, and the
-//! process flags of the detached launcher (ADR 0004, 0006).
+//! Windows: native message boxes (used when there is no WebView2), x64 emulation on ARM64, free disk space, the ANSI
+//! code page Java reads its command line in, and the process flags of the detached launcher (ADR 0004, 0006).
 
 use std::ffi::OsStr;
 use std::io;
@@ -7,6 +7,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 
 use windows_sys::Win32::Foundation::HMODULE;
+use windows_sys::Win32::Globalization::{CP_ACP, CP_UTF8, GetACP, WC_NO_BEST_FIT_CHARS, WideCharToMultiByte};
 use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -78,9 +79,97 @@ pub fn x64_emulation_available() -> bool {
     hresult >= 0 && attributes & USER_ENABLED != 0
 }
 
+/// The ANSI code page of this Windows ("Language for non-Unicode programs"); 65001 with "Beta: Use Unicode UTF-8".
+pub fn ansi_code_page() -> u32 {
+    // SAFETY: no arguments, no side effects.
+    unsafe { GetACP() }
+}
+
+/// Whether the ANSI code page cannot write `text`; returns that code page if so.
+///
+/// The Java launcher reads its command line in the ANSI code page (`GetCommandLineA`): a character the code page
+/// lacks reaches Java as `?`, and `java -jar <path>` fails with "Unable to access jarfile" (seen in CI with a
+/// Cyrillic folder under code page 1252). An 8.3 short name does not get around it: Java canonicalises the class
+/// path back to the long name, and Gravit's wrapper starts the launcher JVM with `-cp <that name>` the same way.
+pub fn ansi_cannot_write(text: &OsStr) -> Option<u32> {
+    let wide: Vec<u16> = text.encode_wide().collect();
+    if wide.iter().all(|&unit| unit < 0x80) {
+        return None;
+    }
+    let code_page = ansi_code_page();
+    if code_page == CP_UTF8 {
+        return None;
+    }
+    let Ok(length) = i32::try_from(wide.len()) else {
+        return Some(code_page);
+    };
+    // SAFETY: `wide` holds `length` UTF-16 units; a null output buffer of size 0 only asks for the needed size.
+    let needed = unsafe {
+        WideCharToMultiByte(
+            CP_ACP,
+            WC_NO_BEST_FIT_CHARS,
+            wide.as_ptr(),
+            length,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+        )
+    };
+    let size = usize::try_from(needed).unwrap_or(0);
+    if size == 0 {
+        return Some(code_page);
+    }
+    let mut bytes = vec![0u8; size];
+    let mut used_default = 0;
+    // SAFETY: `bytes` has room for `needed` bytes and `used_default` is a valid out pointer; a null default
+    // character means the code page's own.
+    let written = unsafe {
+        WideCharToMultiByte(
+            CP_ACP,
+            WC_NO_BEST_FIT_CHARS,
+            wide.as_ptr(),
+            length,
+            bytes.as_mut_ptr(),
+            needed,
+            std::ptr::null(),
+            &mut used_default,
+        )
+    };
+    (written == 0 || used_default != 0).then_some(code_page)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ascii_is_written_by_every_code_page() {
+        assert_eq!(ansi_cannot_write(OsStr::new(r"C:\Games\Asterium.exe")), None);
+    }
+
+    #[test]
+    fn an_emoji_needs_the_utf8_code_page() {
+        // No single- or double-byte ANSI code page has U+1F600.
+        let verdict = ansi_cannot_write(OsStr::new("C:\\\u{1F600}\\Asterium.exe"));
+        let code_page = ansi_code_page();
+        if code_page == CP_UTF8 { assert_eq!(verdict, None) } else { assert_eq!(verdict, Some(code_page)) }
+    }
+
+    #[test]
+    fn cyrillic_depends_on_the_code_page() {
+        let verdict = ansi_cannot_write(OsStr::new(r"C:\Ігри з пробілом\Asterium.exe"));
+        match ansi_code_page() {
+            1251 | CP_UTF8 => assert_eq!(verdict, None),
+            1252 => {
+                // GitHub's Windows runners. Best fit must not count: it would write "ї" as "i".
+                assert_eq!(verdict, Some(1252));
+                assert_eq!(ansi_cannot_write(OsStr::new("ї")), Some(1252));
+                assert_eq!(ansi_cannot_write(OsStr::new(r"C:\Spiele für alle\Asterium.exe")), None);
+            }
+            _ => {}
+        }
+    }
 
     #[test]
     fn free_space_of_the_temp_dir_is_positive() {

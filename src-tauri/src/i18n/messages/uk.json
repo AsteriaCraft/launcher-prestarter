@@ -38,6 +38,7 @@
   "error.missingLibs": "Лаунчеру бракує системних бібліотек. Встановіть їх і запустіть Asterium знову:",
   "error.missingLibsUnknown": "Лаунчеру бракує системних бібліотек: {libraries}.",
   "error.launchFailed": "Лаунчер не запустився.",
+  "error.pathEncoding": "Java не може відкрити «{path}»: у назві є літери, яких не знає мова Windows для програм без Юнікоду. Перенесіть Asterium у папку з латинськими літерами (наприклад, C:\\Games\\Asterium) або змініть у Windows «Мову програм, які не підтримують Юнікод».",
   "error.wrapperTooOld": "Ця версія Asterium застаріла. Завантажте нову з сайту.",
   "error.store": "Не вдалося створити каталог Asterium: {path}.",
   "error.internal": "Сталася неочікувана помилка.",

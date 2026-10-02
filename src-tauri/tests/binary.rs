@@ -46,7 +46,7 @@ fn installed_store(store: &Path) {
 
 fn embedded_copy(dir: &Path) -> PathBuf {
     let name = if cfg!(windows) { "Asterium.exe" } else { "Asterium_linux" };
-    let path = dir.join("Ігри з пробілом").join(name);
+    let path = dir.join(support::readable_folder()).join(name);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     let mut bytes = fs::read(prestarter()).unwrap();
     bytes.extend(test_jar());
