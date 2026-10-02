@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "featureVersion": 25,
+  "targets": {
+    "windows-x64": {
+      "version": "25.0.4.1+1",
+      "url": "https://github.com/bell-sw/Liberica/releases/download/25.0.4.1+1/bellsoft-jre25.0.4.1+1-windows-amd64-full.zip",
+      "filename": "bellsoft-jre25.0.4.1+1-windows-amd64-full.zip",
+      "size": 120037237,
+      "packageType": "zip",
+      "sha1": "f42fb6d8ca801d7b9abb8d86d52031247d46c41b",
+      "sha256": "553dbfeaee8f1b757d78ecd24759495364b4baa0bdc9ab52d44103372e9c1f79"
+    },
+    "windows-arm64": {
+      "version": "25.0.4.1+1",
+      "url": "https://github.com/bell-sw/Liberica/releases/download/25.0.4.1+1/bellsoft-jre25.0.4.1+1-windows-aarch64-full.zip",
+      "filename": "bellsoft-jre25.0.4.1+1-windows-aarch64-full.zip",
+      "size": 49021855,
+      "packageType": "zip",
+      "sha1": "cca8fb26e45bed1516e4fc6a392c10ff04f71000",
+      "sha256": "a792ba5bc20ae61fb51fadb98f2952a593cfac60d6047a674d7a57df0d680e16"
+    },
+    "linux-x64": {
+      "version": "25.0.4.1+1",
+      "url": "https://github.com/bell-sw/Liberica/releases/download/25.0.4.1+1/bellsoft-jre25.0.4.1+1-linux-amd64-full.tar.gz",
+      "filename": "bellsoft-jre25.0.4.1+1-linux-amd64-full.tar.gz",
+      "size": 143747039,
+      "packageType": "tar.gz",
+      "sha1": "e17036cd4e4bfcf808a97189b0eaef38a9b38ac5",
+      "sha256": "9ade2b638ffe81a632a058ddc22347487497d6f705c8ccbc42fee7bf835d5dd3"
+    },
+    "linux-arm64": {
+      "version": "25.0.4.1+1",
+      "url": "https://github.com/bell-sw/Liberica/releases/download/25.0.4.1+1/bellsoft-jre25.0.4.1+1-linux-aarch64-full.tar.gz",
+      "filename": "bellsoft-jre25.0.4.1+1-linux-aarch64-full.tar.gz",
+      "size": 147346919,
+      "packageType": "tar.gz",
+      "sha1": "5b2232eaa8749d7dfd0c4e9e78e31bd7e70ee090",
+      "sha256": "af0d78c4f2e75cdcb2adab1eb4fff61924407642466b5c8d8f6249aa059775f9"
+    },
+    "macos-x64": {
+      "version": "25.0.4.1+1",
+      "url": "https://github.com/bell-sw/Liberica/releases/download/25.0.4.1+1/bellsoft-jre25.0.4.1+1-macos-amd64-full.tar.gz",
+      "filename": "bellsoft-jre25.0.4.1+1-macos-amd64-full.tar.gz",
+      "size": 128984528,
+      "packageType": "tar.gz",
+      "sha1": "87833428881cfa5f7eb89bcbdb165e9bb528a2f9",
+      "sha256": "e7f01d133b488e57894b655e7ea7f2dfa11543ed63ea7b7958b02fd9d06dd137"
+    },
+    "macos-arm64": {
+      "version": "25.0.4.1+1",
+      "url": "https://github.com/bell-sw/Liberica/releases/download/25.0.4.1+1/bellsoft-jre25.0.4.1+1-macos-aarch64-full.tar.gz",
+      "filename": "bellsoft-jre25.0.4.1+1-macos-aarch64-full.tar.gz",
+      "size": 126029993,
+      "packageType": "tar.gz",
+      "sha1": "5784742d8c082d38a4c12e25812c6d240469899f",
+      "sha256": "e4b6a441215f850b9ea747baed1f99e50f00789243e0dec3c428607c1f7dc293"
+    }
+  }
+}

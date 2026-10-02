@@ -7,6 +7,7 @@ mod extract;
 mod runner;
 
 // The role layout (crossplatform.md 4.1); the 0.2 modules above are replaced once the app is rewired.
+pub mod jre;
 pub mod net;
 pub mod platform;
 pub mod store;
