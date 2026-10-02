@@ -23,8 +23,11 @@ for _ in $(seq 1 50); do [ -S "$XDG_RUNTIME_DIR/wayland-smoke" ] && break; sleep
 [ -S "$XDG_RUNTIME_DIR/wayland-smoke" ] || fail "weston did not start: $(cat "$out/weston.log")"
 
 store="$(mktemp -d)"
+# The raw file is in copy mode; a loopback launcher URL keeps it away from the production host (no policy fetch,
+# and nothing listens on port 9: the run is stopped after the screenshot anyway).
 env -u DISPLAY WAYLAND_DISPLAY=wayland-smoke GDK_BACKEND=wayland ASTERIUM_PRESTARTER_NONINTERACTIVE=1 \
-  ASTERIUM_PRESTARTER_STORE="$store" "$elf" >"$out/prestarter-stdout.txt" 2>&1 &
+  ASTERIUM_PRESTARTER_STORE="$store" ASTERIUM_PRESTARTER_LAUNCHER_URL=http://127.0.0.1:9/Asterium.jar \
+  "$elf" >"$out/prestarter-stdout.txt" 2>&1 &
 pid=$!
 sleep 10
 WAYLAND_SCREENSHOT=wayland-smoke screenshot "wayland-prestarter"
