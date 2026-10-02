@@ -20,7 +20,7 @@ probe="${PROBE_JAR:-dist/fixtures/FxProbe.jar}"
 if [ ! -s "$raw" ] || [ ! -s "$probe" ]; then fail "missing $raw or $probe"; fi
 trap stop_servers EXIT
 
-tmp="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/smoke-$label-$$"
+tmp="$(temp_root)/smoke-$label-$$"
 dir="$tmp/Ігри з пробілом"
 mkdir -p "$dir"
 case "$(host_os)" in windows) exe="$dir/Asterium.exe" ;; *) exe="$dir/Asterium_linux" ;; esac

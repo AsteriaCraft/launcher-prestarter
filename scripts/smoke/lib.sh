@@ -23,6 +23,12 @@ host_os() {
   esac
 }
 
+# A writable temporary root in this shell's own path form (in Git Bash: /d/a/_temp rather than the Windows form).
+temp_root() {
+  local root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+  if [ "$(host_os)" = windows ]; then cygpath -u "$root"; else echo "$root"; fi
+}
+
 # A path the native (non-MSYS) programs understand.
 native_path() {
   if [ "$(host_os)" = windows ]; then cygpath -w "$1"; else echo "$1"; fi

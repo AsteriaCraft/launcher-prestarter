@@ -16,7 +16,7 @@ probe="${PROBE_JAR:-dist/fixtures/FxProbe.jar}"
 if [ ! -s "$appimage" ] || [ ! -s "$probe" ]; then fail "missing $appimage or $probe"; fi
 trap stop_servers EXIT
 
-tmp="${RUNNER_TEMP:-/tmp}/smoke-$label-$$"
+tmp="$(temp_root)/smoke-$label-$$"
 mkdir -p "$tmp/www" "$tmp/Downloads"
 cp "$probe" "$tmp/www/Asterium.jar"
 cp "$appimage" "$tmp/Downloads/Asterium.AppImage"
@@ -53,7 +53,13 @@ screenshot "$label-2-probe"
 appdir="$(grep -o 'appimage_extracted_[A-Za-z0-9]*\|\.mount_[A-Za-z0-9]*' "$SMOKE_OUT/$label/run-1/prestarter-1.log" | head -n 1 || true)"
 assert_clean_env "$markers/fx-0.json" "${appdir:-.mount_}"
 cwd="$(json_get "$markers/fx-0.json" 'd["record"]["cwd"]')"
-[ "$cwd" = "$tmp/Downloads" ] || fail "[$label] the launcher runs in $cwd, not where the AppImage was started"
+# OWD (where the player started the AppImage) when the runtime sets it, the home directory otherwise; never the
+# mount or extraction directory, which disappears when the prestarter exits.
+case "$cwd" in
+  "$tmp/Downloads") log "[$label] the launcher starts in OWD ($cwd)" ;;
+  "$HOME") log "[$label] the launcher starts in the home directory (no OWD from the runtime)" ;;
+  *) fail "[$label] the launcher runs in $cwd, not in OWD or the home directory" ;;
+esac
 grep -q "wrapper outcome: Started" "$SMOKE_OUT/$label/run-1/prestarter-1.log" || fail "[$label] the wrapper was not watched"
 
 log "[$label] second start (fast path)"
