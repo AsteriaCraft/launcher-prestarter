@@ -39,8 +39,13 @@ pub struct TempDir(pub PathBuf);
 
 impl TempDir {
     pub fn new(tag: &str) -> Self {
-        // A Cyrillic, spaced name on purpose: paths like this must work everywhere.
-        let path = std::env::temp_dir().join(format!("asterium тест {tag}-{}", unique_suffix()));
+        // A spaced name beyond ASCII on purpose: paths like this must work wherever Java can read them (Cyrillic,
+        // or Latin letters with diacritics on a Windows whose ANSI code page has no Cyrillic).
+        let word = ["тест", "tëst", "test"]
+            .into_iter()
+            .find(|word| prestarter_lib::platform::java_cannot_write(Path::new(word)).is_none())
+            .expect("ASCII is always readable");
+        let path = std::env::temp_dir().join(format!("asterium {word} {tag}-{}", unique_suffix()));
         fs::create_dir_all(&path).unwrap();
         Self(path)
     }
