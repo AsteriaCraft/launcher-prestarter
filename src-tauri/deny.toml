@@ -14,7 +14,12 @@ all-features = false
 [advisories]
 version = 2
 yanked = "deny"
-ignore = []
+ignore = [
+  # proc-macro-error is unmaintained; it reaches us only as a compile-time proc macro of gtk-rs 0.18 (glib-macros),
+  # which Tauri's Linux stack (tauri, tao, muda, wry) pins. Nothing of it ships in the binary; it leaves with
+  # Tauri's move off gtk-rs 0.18. Re-check on every Tauri upgrade.
+  { id = "RUSTSEC-2024-0370", reason = "compile-time only, pinned by Tauri's gtk-rs 0.18 stack" },
+]
 
 [licenses]
 version = 2
