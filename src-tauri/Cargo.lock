@@ -6,7 +6,6 @@ version = 4
 name = "Prestarter"
 version = "0.3.0"
 dependencies = [
- "anyhow",
  "base64 0.22.1",
  "chrono",
  "dirs",
