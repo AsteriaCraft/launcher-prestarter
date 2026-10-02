@@ -34,8 +34,12 @@ IMAGE="${BUILDER_IMAGE:-prestarter-linux-builder}"
 
 die() { echo "build-linux: $*" >&2; exit 1; }
 
-# Highest GLIBC_x.y version an ELF file needs (empty if none).
-glibc_needed() { objdump -T "$1" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/GLIBC_//' | sort -uV | tail -n 1; }
+# Highest GLIBC_x.y version an ELF file needs (empty if none: a static ELF such as the AppImage runtime, or a
+# library without versioned glibc symbols, is not an error under pipefail).
+glibc_needed() {
+  { objdump -T "$1" 2>/dev/null || true; } | { grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' || true; } \
+    | sed 's/GLIBC_//' | sort -uV | tail -n 1
+}
 version_le() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" = "$1" ]; }
 
 check_toolchain() {
@@ -122,7 +126,7 @@ step_verify() {
   check_elf "$work/squashfs-root/usr/bin/Prestarter" "AppImage usr/bin/Prestarter"
   # The AppImage carries Ubuntu 22.04 libraries; its real glibc floor is the highest any of them needs.
   while IFS= read -r -d '' file; do
-    if file -b "$file" | grep -q '^ELF'; then
+    if [ "$(head -c 4 "$file" | od -An -tx1 | tr -d ' \n')" = 7f454c46 ]; then
       need="$(glibc_needed "$file")"
       if [ -n "$need" ] && ! version_le "$need" "$max"; then max="$need"; fi
     fi
