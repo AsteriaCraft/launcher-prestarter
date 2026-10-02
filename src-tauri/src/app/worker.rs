@@ -30,6 +30,8 @@ pub struct AppState {
     pub lang: Lang,
     pub test_mode: bool,
     pub logs_dir: std::path::PathBuf,
+    /// When the window was asked for (the log says how long the page took to report ready).
+    pub opened: std::time::Instant,
 }
 
 /// How long "Asterium is running" stays on screen before the prestarter exits.

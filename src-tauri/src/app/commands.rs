@@ -20,14 +20,16 @@ pub struct Boot {
 /// Language and mode for the first render (the version comes from `getVersion()`).
 #[tauri::command]
 pub fn boot(state: State<'_, AppState>) -> Boot {
+    log::info!("the page started after {} ms", state.opened.elapsed().as_millis());
     Boot { lang: state.lang, test_mode: state.test_mode, os: crate::platform::Host::current().os.as_str() }
 }
 
-/// The front end has painted its first frame: show the window (hidden until now, so there is no white flash) and
-/// start the work.
+/// The front end has rendered and loaded what it paints first: show the window (hidden until now, so there is no
+/// white flash) and start the work. The smoke tests wait for this log line before their screenshot.
 #[tauri::command]
 pub fn ready(app: AppHandle, window: WebviewWindow, state: State<'_, AppState>) {
     if !state.started.swap(true, Ordering::SeqCst) {
+        log::info!("the page is ready after {} ms; showing the window", state.opened.elapsed().as_millis());
         let _ = window.show();
         let _ = window.set_focus();
         worker::spawn(app);

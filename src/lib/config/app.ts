@@ -19,6 +19,13 @@ export const events = {
   done: "done",
 } as const;
 
+/** What the first frame paints, loaded before the hidden window is shown (`utils/paint.ts`, global.scss). */
+export const firstFrame = {
+  fonts: ['700 16px "Inter"', '16px "Kharkiv"'],
+  /** The window is shown after this even if a font or the background has not loaded. */
+  timeoutMs: 1500,
+} as const;
+
 export const ui = {
   /** How often the tip under the progress bar changes. */
   tipIntervalMs: 6000,

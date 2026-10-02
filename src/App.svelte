@@ -5,12 +5,14 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
 
+  import background from "$lib/assets/images/back.jpg";
   import DownloadBlock from "$lib/components/ui/DownloadBlock.svelte";
-  import { commands, events } from "$lib/config/app";
+  import { commands, events, firstFrame } from "$lib/config/app";
   import { translator, type Translator } from "$lib/i18n";
   import type { Boot, FailurePayload, Notice, ProgressPayload, StagePayload } from "$lib/types/events";
+  import { whenPaintable } from "$lib/utils/paint";
   import { initialState, reduce, type ViewEvent, type ViewState } from "$lib/utils/state";
 
   let view: ViewState = $state(initialState);
@@ -44,8 +46,11 @@
       await listen(events.done, () => dispatch({ type: "done" })),
     );
     ready = true;
-    // Show the window only after the first frame is painted (no white flash), then start the work.
-    requestAnimationFrame(() => requestAnimationFrame(() => call(commands.ready)));
+    // Show the window once its first frame has what it paints (no white flash, no fallback font), then start the
+    // work. Not requestAnimationFrame: WebKit runs none in a hidden window, so on Linux and macOS it never fired.
+    await tick();
+    await whenPaintable(firstFrame.fonts, [background], firstFrame.timeoutMs);
+    call(commands.ready);
   });
 
   onDestroy(() => unlisten.forEach((stop) => stop()));

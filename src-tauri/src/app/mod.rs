@@ -59,6 +59,7 @@ pub fn run(session: Session, start: Start) -> i32 {
         lang,
         test_mode,
         logs_dir,
+        opened: std::time::Instant::now(),
     };
 
     let setup_shared = Arc::clone(&shared);
