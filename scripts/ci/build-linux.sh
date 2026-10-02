@@ -99,7 +99,9 @@ step_appimage() {
     install -m 0755 "$TOOLS_DIR/$name" "$cache/$name"
   done < scripts/ci/appimage-tools.lock
   export APPIMAGE_EXTRACT_AND_RUN=1
-  node_modules/.bin/tauri bundle --bundles appimage
+  # The pinned runtime instead of appimagetool's download of `continuous`; verbose so a failure is explained.
+  export LDAI_RUNTIME_FILE="$cache/type2-runtime-$arch" LDAI_VERBOSE=1
+  node_modules/.bin/tauri bundle --bundles appimage --verbose
   local version built
   version="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' src-tauri/tauri.conf.json | head -n 1)"
   case "$arch" in x86_64) built="Asterium_${version}_amd64.AppImage" ;; aarch64) built="Asterium_${version}_aarch64.AppImage" ;; esac
