@@ -75,8 +75,13 @@ run_slice() { # <label> <arch prefix...>
   "$@" "$binary" &
   local pid=$!
   screenshot_window "$store/logs/prestarter-1.log" "macos-$label-1-prestarter" 60
-  wait_pid "$pid" 900 || fail "[$label] the app did not finish"
+  local waited=0
+  wait_prestarter "$pid" "$store/logs/prestarter-1.log" 900 || waited=$?
   collect_store "$store" "macos/$label"
+  case "$waited" in
+    1) fail "[$label] the app did not finish" ;;
+    2) fail "[$label] the window shows an error: $(shown_error "$out/$label/prestarter-1.log")" ;;
+  esac
   [ "$EXIT_CODE" = 0 ] || fail "[$label] the app exited with $EXIT_CODE"
   [ "$WINDOW_SHOWN" = 1 ] || fail "[$label] the window's page never reported ready (IPC, CSP or its script)"
   wait_file "$markers/fx-0.json" 120 || fail "[$label] the FX probe never reported"

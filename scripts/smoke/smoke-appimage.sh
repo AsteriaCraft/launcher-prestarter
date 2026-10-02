@@ -41,8 +41,13 @@ log "[$label] first start"
 ./Asterium.AppImage &
 pid=$!
 screenshot_window "$tmp/store/logs/prestarter-1.log" "$label-1-prestarter" 60
-wait_pid "$pid" 900 || fail "[$label] the AppImage did not finish in 15 minutes"
+waited=0
+wait_prestarter "$pid" "$tmp/store/logs/prestarter-1.log" 900 || waited=$?
 collect_store "$tmp/store" "$label/run-1"
+case "$waited" in
+  1) fail "[$label] the AppImage did not finish in 15 minutes" ;;
+  2) fail "[$label] the window shows an error: $(shown_error "$SMOKE_OUT/$label/run-1/prestarter-1.log")" ;;
+esac
 [ "$EXIT_CODE" = 0 ] || fail "[$label] the AppImage exited with $EXIT_CODE"
 wait_file "$markers/fx-0.json" 120 || fail "[$label] the FX probe never reported"
 screenshot "$label-2-probe"
@@ -65,8 +70,13 @@ grep -q "wrapper outcome: Started" "$SMOKE_OUT/$label/run-1/prestarter-1.log" ||
 log "[$label] second start (fast path)"
 ./Asterium.AppImage &
 pid=$!
-wait_pid "$pid" 90 || fail "[$label] the fast path took more than 90 s"
+waited=0
+wait_prestarter "$pid" "$tmp/store/logs/prestarter-1.log" 90 || waited=$?
 collect_store "$tmp/store" "$label/run-2"
+case "$waited" in
+  1) fail "[$label] the fast path took more than 90 s" ;;
+  2) fail "[$label] the second start shows an error: $(shown_error "$SMOKE_OUT/$label/run-2/prestarter-1.log")" ;;
+esac
 [ "$EXIT_CODE" = 0 ] || fail "[$label] the second start exited with $EXIT_CODE"
 wait_file "$markers/fx-1.json" 120 || fail "[$label] the second launch did not open the probe"
 log "[$label] OK (JRE $(json_get "$tmp/store/state.json" 'd["jre"]["version"]'), jar $(json_get "$tmp/store/state.json" 'd["jar"]["sha256"]'))"

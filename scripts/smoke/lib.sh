@@ -102,6 +102,37 @@ wait_pid() {
   if wait "$pid"; then EXIT_CODE=0; else EXIT_CODE=$?; fi
 }
 
+# Waits for the prestarter <pid> up to <seconds> like wait_pid (sets EXIT_CODE; 1 on timeout), but returns 2 as soon
+# as its log shows an error on screen: the window would wait for the player, so the process is stopped at once.
+wait_prestarter() { # <pid> <prestarter log> <seconds>
+  local pid="$1" file="$2" seconds="$3" waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ -f "$file" ] && grep -q 'ERROR \[app::worker\]' "$file"; then
+      sleep 2
+      screenshot "error-$(date +%s)"
+      kill "$pid" 2>/dev/null || true
+      # shellcheck disable=SC2034 # read by the caller
+      EXIT_CODE=125
+      return 2
+    fi
+    if [ "$waited" -ge "$seconds" ]; then
+      kill "$pid" 2>/dev/null || true
+      # shellcheck disable=SC2034 # read by the caller
+      EXIT_CODE=124
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  # shellcheck disable=SC2034 # read by the caller
+  if wait "$pid"; then EXIT_CODE=0; else EXIT_CODE=$?; fi
+}
+
+# The error a prestarter log shows on screen, if any (for the failure message).
+shown_error() { # <prestarter log>
+  grep -m 1 'ERROR \[app::worker\]' "$1" 2>/dev/null | sed 's/^.*ERROR \[app::worker\] //' || true
+}
+
 # Full-screen screenshot into $SMOKE_OUT/<name>.png (best effort: a missing tool only logs).
 screenshot() {
   local name="$1" file="$SMOKE_OUT/$1.png"

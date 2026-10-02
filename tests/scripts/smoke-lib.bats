@@ -43,6 +43,33 @@ teardown() {
   [ "$(cat "$WORK/shots")" = "$(printf 'shot first\nshot second')" ]
 }
 
+@test "wait_prestarter returns the exit code of a process that ends" {
+  bash -c 'sleep 1; exit 3' &
+  local waited=0
+  wait_prestarter "$!" "$WORK/p.log" 10 || waited=$?
+  [ "$waited" -eq 0 ]
+  [ "$EXIT_CODE" -eq 3 ]
+}
+
+@test "wait_prestarter stops a window that shows an error" {
+  screenshot() { :; }
+  sleep 30 &
+  local pid=$! waited=0
+  echo "2026-10-02T18:26:40.074Z ERROR [app::worker] JreInstall (exit 3): Access is denied. (os error 5)" > "$WORK/p.log"
+  wait_prestarter "$pid" "$WORK/p.log" 20 || waited=$?
+  [ "$waited" -eq 2 ]
+  ! kill -0 "$pid" 2>/dev/null
+  [ "$(shown_error "$WORK/p.log")" = "JreInstall (exit 3): Access is denied. (os error 5)" ]
+}
+
+@test "wait_prestarter gives up after its time" {
+  sleep 30 &
+  local pid=$! waited=0
+  wait_prestarter "$pid" "$WORK/p.log" 1 || waited=$?
+  [ "$waited" -eq 1 ]
+  [ "$EXIT_CODE" -eq 124 ]
+}
+
 @test "serve_dir serves a directory on loopback" {
   mkdir -p "$WORK/www"
   echo jar > "$WORK/www/Asterium.jar"

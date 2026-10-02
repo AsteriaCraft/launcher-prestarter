@@ -61,8 +61,13 @@ if [ "$mode" = no-webview ]; then
 else
   screenshot_window "$store/logs/prestarter-1.log" "$label-1-prestarter" 45
 fi
-wait_pid "$pid" 900 || fail "[$label] the prestarter did not finish in 15 minutes"
+waited=0
+wait_prestarter "$pid" "$store/logs/prestarter-1.log" 900 || waited=$?
 collect_store "$store" "$label/run-1"
+case "$waited" in
+  1) fail "[$label] the prestarter did not finish in 15 minutes" ;;
+  2) fail "[$label] the window shows an error: $(shown_error "$SMOKE_OUT/$label/run-1/prestarter-1.log")" ;;
+esac
 [ "$EXIT_CODE" = 0 ] || fail "[$label] the prestarter exited with $EXIT_CODE (logs in $SMOKE_OUT/$label/run-1)"
 log "[$label] first start finished in $(( $(date +%s) - started )) s with exit code 0"
 if [ "$mode" != no-webview ] && [ "$WINDOW_SHOWN" != 1 ]; then
@@ -91,8 +96,13 @@ fi
 log "[$label] second start (fast path: no window, no network)"
 "$exe" &
 pid=$!
-wait_pid "$pid" 60 || fail "[$label] the fast path took more than 60 s"
+waited=0
+wait_prestarter "$pid" "$store/logs/prestarter-1.log" 60 || waited=$?
 collect_store "$store" "$label/run-2"
+case "$waited" in
+  1) fail "[$label] the fast path took more than 60 s" ;;
+  2) fail "[$label] the second start shows an error: $(shown_error "$SMOKE_OUT/$label/run-2/prestarter-1.log")" ;;
+esac
 [ "$EXIT_CODE" = 0 ] || fail "[$label] the second start exited with $EXIT_CODE"
 wait_file "$markers/fx-1.json" 120 || fail "[$label] the second launch did not open the probe"
 grep -q "launcher started (Detached) without a window" "$SMOKE_OUT/$label/run-2/prestarter-1.log" \
