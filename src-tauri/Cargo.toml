@@ -54,6 +54,10 @@ windows-sys = { version = "0.61.2", features = [
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.177"
 
+[dev-dependencies]
+# A test CA and server certificate for the HTTPS integration tests.
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "ring", "pem"] }
+
 [profile.dev]
 incremental = true
 
