@@ -32,3 +32,9 @@ setup() {
   run bash "$SCRIPT" sign
   [ "$status" -eq 2 ]
 }
+
+@test "the self-test refuses to run outside a GitHub Actions runner" {
+  run env -u GITHUB_ACTIONS bash "$SCRIPT" self-test /tmp/Asterium.app /tmp/selftest.dmg
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"disposable GitHub Actions runner"* ]]
+}

@@ -10,7 +10,8 @@
 #       --dry-run             -> print the commands instead of running notarytool (no Apple account needed)
 #   macos-signing.sh self-test <Asterium.app> <out.dmg>
 #       Signs a copy with a self-signed code-signing certificate in a temporary keychain and verifies the app and the
-#       DMG with codesign: the import, identity lookup and signing path work without an Apple account.
+#       DMG with codesign: the import, identity lookup and signing path work without an Apple account. It trusts the
+#       certificate in the system's admin trust settings, so it runs only on a disposable GitHub Actions runner.
 #
 # Secrets (environment): APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_ID, APPLE_TEAM_ID,
 # APPLE_APP_PASSWORD (an app-specific password; also exported as APPLE_PASSWORD, the name Tauri uses).
@@ -50,6 +51,9 @@ if [ "$mode" = check-secrets ]; then
 fi
 
 if [ -z "$mode" ] || [ -z "$app" ] || [ -z "$dmg" ]; then usage; fi
+if [ "$mode" = self-test ] && [ "${GITHUB_ACTIONS:-}" != true ]; then
+  die "self-test changes the system's trust settings and runs only on a disposable GitHub Actions runner"
+fi
 [ -d "$app/Contents/MacOS" ] || die "$app is not an app bundle"
 [ "$(uname -s)" = Darwin ] || die "macOS only"
 
@@ -148,7 +152,8 @@ EOF
   bash "$here/make-dmg.sh" "$copy" "$dmg"
   codesign --force --timestamp=none --sign "$identity" "$dmg"
   codesign --verify -vv "$dmg"
-  sudo security remove-trusted-cert -d "$work/cert.pem" >/dev/null 2>&1 || true
+  # The trust setting is not removed: removing an admin trust setting waits for an authorization dialog (CI hung for
+  # 20 minutes there), and the runner is discarded after the job. The key goes with the keychain on exit.
   echo "macos-signing: self-test passed (import, identity, app and DMG signatures verified)"
 }
 
