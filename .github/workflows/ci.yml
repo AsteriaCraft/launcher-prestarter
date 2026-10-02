@@ -140,9 +140,10 @@ jobs:
         working-directory: src-tauri
         shell: bash
         run: |
-          # The exit code is cargo's own (no pipe); the log is printed and summarised afterwards.
+          # The exit code is cargo's own (no pipe); the log is printed and summarised afterwards. --no-fail-fast: every
+          # test binary runs, so one failing binary does not hide the results of the others.
           rc=0
-          cargo test --locked > "$RUNNER_TEMP/test.log" 2>&1 || rc=$?
+          cargo test --locked --no-fail-fast > "$RUNNER_TEMP/test.log" 2>&1 || rc=$?
           cat "$RUNNER_TEMP/test.log"
           awk -v rc="$rc" -v runner="${{ matrix.runner }}" '/^test result:/ {p+=$4; f+=$6} END {printf "cargo test on %s: %d passed, %d failed (exit %s)\n", runner, p, f, rc}' "$RUNNER_TEMP/test.log" >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
