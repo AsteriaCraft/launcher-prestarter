@@ -3,9 +3,11 @@
 # against the committed public key, so a wrong or half-rotated key fails here and not on the LaunchServer.
 #
 # Key source (first match):
-#   RELEASE_SIGNING_KEY       - CI: the repository secret. ONE line of base64 of the DER private key (what
-#                               scripts/make-release-signing-key.sh stores; the same format as the runtime repository),
-#                               or base64 of the PEM, or the PEM itself.
+#   RELEASE_SIGNING_KEY       - CI: the secret of the GitHub Environment `release`, which only publish.yml's publish
+#                               job (branch `release`) can read; never a repository secret (publish.yml and ci.yml
+#                               refuse to go on while one exists). ONE line of base64 of the DER private key (what
+#                               scripts/setup-repository.sh and make-release-signing-key.sh store), or base64 of the
+#                               PEM, or the PEM itself.
 #   RELEASE_SIGNING_KEY_FILE  - offline signing by the owner: path to the PEM private key.
 # Public key for the self-check: RELEASE_SIGNING_PUBKEY (default .github/release-signing.pub.pem).
 #
@@ -49,7 +51,7 @@ if ! openssl pkeyutl -sign -rawin -inkey "$key" -in "$dist/release.json" -out "$
   exit 1
 fi
 if [ ! -s "$pub" ]; then
-  echo "sign-release: public key $pub is missing - commit it (scripts/make-release-signing-key.sh prints it)" >&2
+  echo "sign-release: public key $pub is missing - it is committed with the key (scripts/make-release-signing-key.sh)" >&2
   exit 1
 fi
 if ! openssl pkeyutl -verify -rawin -pubin -inkey "$pub" -in "$dist/release.json" -sigfile "$dist/release.json.sig" >/dev/null 2>&1; then

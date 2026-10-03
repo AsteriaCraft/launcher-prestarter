@@ -91,7 +91,9 @@ scripts/smoke/        smoke на рідних раннерах
   `cargo xwin clippy`), `cargo test` на `ubuntu-22.04`, `ubuntu-22.04-arm`, `windows-2025`, `windows-11-arm`,
   `macos-15`; svelte-check, vitest, `cargo deny`, shellcheck, actionlint, bats; збирання всіх семи артефактів
   (`build.yml`) і smoke на рідних раннерах (`smoke.yml`); для PR у `release` - ще перевірка версії, дати в
-  `CHANGELOG.md` і `release-notes/<версія>.json`. Без секретів і без публікації.
+  `CHANGELOG.md` і `release-notes/<версія>.json` і те, що ключ підпису не є секретом репозиторію. Значень секретів не
+  читає і нічого не публікує. Останній job **«CI result»** чекає на всі інші - це єдина обов'язкова перевірка захисту
+  гілок (`.github/protect.json`); push, який gate пропускає, звітує як «CI result (push)» і PR не підміняє.
 - **`publish.yml`** - лише push у `release` (злиття PR власником **публікує одразу**):
   1. версія однакова в `tauri.conf.json`, `package.json`, `src-tauri/Cargo.toml` (і `Cargo.lock`), заголовок
      `## [X.Y.Z] - YYYY-MM-DD` у `CHANGELOG.md` і та сама дата в `release-notes/X.Y.Z.json`; тег `v<версія>` ще не
@@ -101,7 +103,7 @@ scripts/smoke/        smoke на рідних раннерах
      `::notice::`; частина секретів - помилка);
   3. smoke на тих самих байтах (для macOS - на підписаному DMG);
   4. `SHA256SUMS.txt`, `release.json` (schema 1, кожен актив з `os`, `arch`, `format`, `role`), підписана політика,
-     підпис Ed25519 (`scripts/ci/sign-release.sh`, секрет `RELEASE_SIGNING_KEY`, публічний ключ
+     підпис Ed25519 (`scripts/ci/sign-release.sh`, секрет `RELEASE_SIGNING_KEY` з environment `release`, публічний ключ
      `.github/release-signing.pub.pem` - він же вшитий у престартер для перевірки політики), атестація походження
      (поки репозиторій публічний), draft → публікація як Latest (версія з `-rc.1` - pre-release).
 - **`jre-watch.yml`** - щотижня з `main`: оновлює аварійну таблицю JRE окремим PR і відкриває issue, коли в Windows
@@ -112,9 +114,32 @@ scripts/smoke/        smoke на рідних раннерах
 `Asterium-macos-universal.dmg` (готові завантаження), `release-notes.json`, `prestarter-policy.json`, `SHA256SUMS.txt`,
 `release.json`, `release.json.sig`.
 
-Ключ підпису створює власник один раз: `scripts/make-release-signing-key.sh AsteriaCraft/launcher-prestarter prestarter`
-(секрет + публічний ключ для коміту + рядок для конфігу LaunchServer). Офлайн-підпис ключем власника:
-`RELEASE_SIGNING_KEY_FILE=key.pem RELEASE_SIGNING_PUBKEY=release-signing.pub.pem scripts/ci/sign-release.sh <каталог>`.
+### Налаштування репозиторію (власник, один раз)
+
+Ключ підпису вже існує: ним підписано 0.2.0, його публічна половина - `.github/release-signing.pub.pem`, вона вшита в
+престартер і стоїть у `signingPublicKeys` LaunchServer. Секрет `RELEASE_SIGNING_KEY` має жити **лише** в GitHub
+Environment `release` (з нього може розгортатися тільки гілка `release`): секрет репозиторію читає workflow з будь-якої
+гілки. Поки він є секретом репозиторію, `publish.yml` нічого не публікує, а PR у `release` червоний (job «Release key
+only in environment release»). Усе робить один скрипт з офлайн-копії **наявного** ключа (не нового):
+
+```bash
+scripts/setup-repository.sh AsteriaCraft/launcher-prestarter --release-key <офлайн-копія>.pem --dry-run   # подивитися
+scripts/setup-repository.sh AsteriaCraft/launcher-prestarter --release-key <офлайн-копія>.pem             # зробити
+```
+
+Він звіряє ключ із `.github/release-signing.pub.pem` (чужий або новий ключ - відмова до будь-яких змін), створює
+environment `release` лише для гілки `release`, кладе туди ключ, **лише потім** видаляє секрет репозиторію, ставить
+захист `main` і `release` з `.github/protect.json` (злиття лише через PR із зеленим «CI result» від GitHub Actions,
+актуальним щодо гілки, і для адміністраторів теж; без обов'язкового схвалення, бо автор PR не може схвалити свій;
+без force push і видалення) і дозволяє Actions відкривати PR (`jre-watch.yml`). Наприкінці друкує назви секретів (не
+значення) і обов'язкові перевірки. Потім - «Re-run» перевірки ключа у відкритому PR у `release`. Після перейменування
+job у `ci.yml` назва «CI result» лишається; `tests/scripts/repository-setup.bats` тримає разом цю назву,
+`protect.json` і список `needs`.
+
+`scripts/make-release-signing-key.sh` - лише для **ротації** (новий ключ у environment `release` + новий `.pub.pem`
+у тому самому релізному PR + новий ключ у `signingPublicKeys` поруч зі старим до цього релізу). Новий ключ без решти
+кроків провалює кожен реліз (`sign-release.sh` звіряє підпис із закоміченим публічним ключем). Офлайн-підпис ключем
+власника: `RELEASE_SIGNING_KEY_FILE=key.pem RELEASE_SIGNING_PUBKEY=release-signing.pub.pem scripts/ci/sign-release.sh <каталог>`.
 
 Перевірити реліз вручну:
 

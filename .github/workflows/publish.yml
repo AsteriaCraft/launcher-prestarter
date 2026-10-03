@@ -15,10 +15,12 @@
 #   publish     - environment `release`: SHA256SUMS.txt, release.json with per-asset metadata, the signed policy,
 #                 Ed25519 signature, build provenance attestation (public repository), draft -> upload -> publish
 #
-# Secrets: RELEASE_SIGNING_KEY (repository or environment `release`; one line of base64 of the Ed25519 private key in
-# DER form, see scripts/make-release-signing-key.sh; its public half is .github/release-signing.pub.pem and is
-# compiled into the prestarter for the policy check); APPLE_* only in environment `release`. Once the public key is
-# committed, a missing signing secret fails the run before anything is published.
+# Secrets, all in the GitHub Environment `release` only (deployable from the branch `release`; scripts/setup-repository.sh
+# sets it up): RELEASE_SIGNING_KEY, one line of base64 of the Ed25519 private key in DER form, whose public half is
+# .github/release-signing.pub.pem (compiled into the prestarter for the policy check, and trusted by the LaunchServer);
+# APPLE_*. A repository-wide RELEASE_SIGNING_KEY would be readable by a workflow on any branch, so the version job
+# refuses to start while one exists. Once the public key is committed, a missing signing secret fails the run before
+# anything is published.
 # All actions are pinned to full commit SHAs (tag in the comment).
 name: publish
 
@@ -43,6 +45,18 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      - name: The signing key lives only in the environment release
+        env:
+          # This job has no environment, so only a repository (or organisation) secret is visible here; the step gets
+          # true or false, never the value.
+          REPOSITORY_KEY_SET: ${{ secrets.RELEASE_SIGNING_KEY != '' }}
+        run: |
+          if [ "$REPOSITORY_KEY_SET" = true ]; then
+            echo "::error::RELEASE_SIGNING_KEY is a repository secret: a workflow on any branch can read the key the LaunchServer trusts. Nothing was published. Move it into the environment release with scripts/setup-repository.sh, then re-run this workflow."
+            exit 1
+          fi
+          echo "RELEASE_SIGNING_KEY is not a repository secret"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -188,10 +202,10 @@ jobs:
             # renamed, not set in a new repository) stops the run here, before anything is published: a LaunchServer
             # would refuse the unsigned release, and a published version is never published again.
             if [ -f .github/release-signing.pub.pem ]; then
-              echo "::error file=.github/release-signing.pub.pem::RELEASE_SIGNING_KEY is not set, but .github/release-signing.pub.pem is committed. Nothing was published: set the secret (scripts/make-release-signing-key.sh), then re-run the failed jobs."
+              echo "::error file=.github/release-signing.pub.pem::RELEASE_SIGNING_KEY is not set, but .github/release-signing.pub.pem is committed. Nothing was published: put the existing key into the environment release (scripts/setup-repository.sh with its offline backup), then re-run the failed jobs."
               exit 1
             fi
-            echo "::warning::RELEASE_SIGNING_KEY is not set: $TAG is published WITHOUT release.json.sig. A LaunchServer running AsteriumReleases will not install it. Create the key with scripts/make-release-signing-key.sh."
+            echo "::warning::RELEASE_SIGNING_KEY is not set: $TAG is published WITHOUT release.json.sig. A LaunchServer running AsteriumReleases will not install it. Create the key with scripts/make-release-signing-key.sh (into the environment release)."
           elif [ "$rc" != 0 ]; then
             exit "$rc"
           fi

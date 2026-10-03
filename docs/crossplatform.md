@@ -498,8 +498,9 @@ apps/web/src/shared/mock-canon/fixtures/launcher.fixture.ts фікстури з 
 
 **Ланцюг постачання:** дії GitHub закріплені SHA; `cargo --locked` і `cargo deny` (джерела - лише crates.io, без git
 після прибирання форку tao); `yarn --frozen-lockfile`, прибрано пакет `"-"`; інструменти AppImage закріплені sha256,
-бандлер працює без мережі; `publish.yml` без кешів; секрети Apple (і за бажанням `RELEASE_SIGNING_KEY`) - лише в
-environment `release`; PR-збирання без секретів.
+бандлер працює без мережі; `publish.yml` без кешів; секрети Apple і `RELEASE_SIGNING_KEY` - лише в
+environment `release` (секрет репозиторію з ключем зупиняє `publish.yml` і PR у `release`; перенесення -
+`scripts/setup-repository.sh`); PR-збирання без секретів.
 
 **Межі.** Компрометація origin `launcher.asterium.pro` або ключа Gravit дає зловмиснику лаунчер на всіх платформах -
 так само, як сьогодні для `Asterium.exe`; цей дизайн цю межу не розширює, а задача перевірки API робить підміну

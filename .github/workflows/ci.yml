@@ -1,6 +1,11 @@
 # Checks, tests, builds and smoke-tests every change (ADR 0009). Runs on pull requests, on pushes to every branch
 # except `release` (publish.yml owns that one), and on demand (jre-watch.yml dispatches it for its own PRs, because a
-# PR opened with GITHUB_TOKEN starts no pull_request run). Never publishes, never sees a secret.
+# PR opened with GITHUB_TOKEN starts no pull_request run). Never publishes and never reads a secret's value; on a PR
+# into `release` one job checks only THAT the release signing key is not a repository secret (a green PR into
+# `release` is ready to publish, and publish.yml refuses a repository-wide key).
+# Branch protection (.github/protect.json, scripts/setup-repository.sh) requires one check: "CI result", the last job,
+# which needs every other job. A push run that the gate skips reports "CI result (push)", so it can never stand in for
+# the pull request's own run.
 # All actions are pinned to full commit SHAs (tag in the comment).
 name: ci
 
@@ -212,3 +217,59 @@ jobs:
           tar -xf dist/Asterium.app.tar -C dist
           bash scripts/ci/macos-signing.sh self-test dist/Asterium.app "$RUNNER_TEMP/selftest.dmg"
           bash scripts/ci/macos-signing.sh check-secrets
+
+  key-scope:
+    name: Release key only in environment release
+    if: github.event_name == 'pull_request' && github.base_ref == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      # No checkout: nothing from the branch runs next to the expression below. A job without an environment sees
+      # only repository (and organisation) secrets; the step gets true or false, never the value.
+      - name: RELEASE_SIGNING_KEY is not a repository secret
+        env:
+          REPOSITORY_KEY_SET: ${{ secrets.RELEASE_SIGNING_KEY != '' }}
+        run: |
+          if [ "$REPOSITORY_KEY_SET" = true ]; then
+            echo "::error::RELEASE_SIGNING_KEY is a repository secret: a workflow on any branch can read the key the LaunchServer trusts, and publish.yml refuses to publish. Move it into the environment release (scripts/setup-repository.sh with the offline backup of the existing key), then re-run this job."
+            exit 1
+          fi
+          echo "RELEASE_SIGNING_KEY is not readable outside the environment release"
+
+  result:
+    # The only check branch protection requires (.github/protect.json). Its name must stay "CI result" for a pull
+    # request or a dispatched run; tests/scripts/repository-setup.bats holds the name, protect.json and the list below
+    # together.
+    name: ${{ github.event_name == 'push' && 'CI result (push)' || 'CI result' }}
+    needs: [gate, lint, rust, xwin-clippy, build, smoke, macos-signing, key-scope]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Every job passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          GATE_RUN: ${{ needs.gate.outputs.run }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # gate: always success. key-scope: success on a PR into release, skipped elsewhere. Everything else: success,
+          # or skipped only when the gate skipped this push because an open PR's run does the work.
+          allowed() {
+            case "$1" in
+              gate) echo success ;;
+              key-scope) if [ "$BASE_REF" = release ]; then echo success; else echo skipped; fi ;;
+              *) if [ "$GATE_RUN" = true ]; then echo success; else echo skipped; fi ;;
+            esac
+          }
+          bad=0
+          while IFS=$'\t' read -r job result; do
+            if [ "$result" = "$(allowed "$job")" ]; then
+              echo "$job: $result"
+            else
+              echo "::error::$job: $result (expected $(allowed "$job"))"
+              bad=1
+            fi
+          done < <(jq -r 'to_entries[] | "\(.key)\t\(.value.result)"' <<< "$NEEDS")
+          exit "$bad"

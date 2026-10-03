@@ -26,7 +26,7 @@
 | `ci.yml` | `pull_request` (усі), `push` усіх гілок крім `release`, `workflow_dispatch` | lint, тести, збирання 7 артефактів (`build.yml`), smoke (`smoke.yml`), самоперевірка підпису macOS, для PR у `release` - ще перевірка версії і changelog | `contents: read` (+ `pull-requests: read` для пропуску дублікатів) | жодних |
 | `build.yml` | `workflow_call` | збирає всі цілі, вантажить артефакти; вхід `cache` | `contents: read` | жодних (macOS завжди ad hoc) |
 | `smoke.yml` | `workflow_call` | ганяє артефакти на рідних раннерах ([0008](0008-loopback-test-endpoints.md)) | `contents: read` | жодних |
-| `publish.yml` | `push` у `release` | версія → `build.yml` (без кешів) → `sign-macos` (environment `release`) → `smoke.yml` на тих самих (для macOS - підписаних) байтах → маніфест, підпис, атестація → draft → реліз | job publish: `contents: write`, `id-token: write`, `attestations: write` | `RELEASE_SIGNING_KEY`; `APPLE_*` лише в job `sign-macos` (environment `release`) |
+| `publish.yml` | `push` у `release` | версія → `build.yml` (без кешів) → `sign-macos` (environment `release`) → `smoke.yml` на тих самих (для macOS - підписаних) байтах → маніфест, підпис, атестація → draft → реліз | job publish: `contents: write`, `id-token: write`, `attestations: write` | `RELEASE_SIGNING_KEY` лише в job `publish`, `APPLE_*` лише в job `sign-macos` (обидва - environment `release`; секрет репозиторію з ключем зупиняє job `version`) |
 | `jre-watch.yml` | щотижня (з гілки за замовчуванням `main`) і вручну | оновлює `src-tauri/src/jre/fallback.json` окремим PR у `main` і запускає на ньому `ci.yml` (`workflow_dispatch`); перевіряє `jfxwebkit.dll` у Windows aarch64 ([0004](0004-windows-arm64-uses-x64-jre.md)) | `contents: write`, `pull-requests: write`, `actions: write`, `issues: write` | жодних |
 
 Публікація лишається лише на `release`. PR-збирання ніколи не створює тег, реліз чи draft і не бачить жодного
@@ -144,10 +144,24 @@
 ### Що робить власник (один раз, команди дає лейн)
 
 - Перемотати `main` на `release` і лишити `main` гілкою за замовчуванням (модель гілок вище).
-- Захист гілок `release` і `main`: злиття лише через PR, обов'язкові перевірки `ci.yml`.
-- GitHub Environment `release` з правилом «лише гілка `release`»; секрети `APPLE_*` - туди, коли будуть; туди ж
-  переноситься `RELEASE_SIGNING_KEY` (тоді job `publish` теж оголошує `environment: release`).
-- Увімкнути «Allow GitHub Actions to create and approve pull requests» (для `jre-watch.yml`).
+- Решту робить `scripts/setup-repository.sh <repo> --release-key <офлайн-копія наявного ключа>` (спершу з
+  `--dry-run`; README, «Налаштування репозиторію»): GitHub Environment `release` з правилом «лише гілка `release`»;
+  `RELEASE_SIGNING_KEY` туди з офлайн-копії ключа, що підписав 0.2.0 (ключ, чия публічна половина не
+  `.github/release-signing.pub.pem`, відкидається до будь-яких змін), і **потім** видалення секрету репозиторію;
+  захист `main` і `release` з `.github/protect.json`; «Allow GitHub Actions to create and approve pull requests» (для
+  `jre-watch.yml`). Секрети `APPLE_*` - у той самий environment, коли будуть.
+- Захист вимагає одну перевірку - **«CI result»** (останній job `ci.yml`, `needs` - усі інші, `app_id` GitHub Actions),
+  актуальну щодо гілки (`strict`), PR без обов'язкового схвалення (єдиний адміністратор - автор PR, а GitHub не дає
+  схвалити власний PR), `enforce_admins`. Одна назва замість назв jobs із префіксами повторно використовуваних
+  workflow і матриць: перейменування job не ламає захист, а неправильна назва не блокує злиття назавжди. Push-запуск,
+  який gate пропускає, звітує «CI result (push)», тож пропущені jobs не підміняють перевірку PR.
+
+**Рецензія етапу Gate (2026-10-03).** Секрет `RELEASE_SIGNING_KEY` лишався секретом репозиторію (`gh secret list`), а
+`ci.yml` запускається на push у будь-яку гілку: workflow з будь-якої гілки міг прочитати ключ, якому LaunchServer
+довіряє престартер, що потім дописується до `Asterium.exe` кожного гравця. Тепер `publish.yml` (job `version`, без
+environment) і `ci.yml` (job «Release key only in environment release» на PR у `release`, без checkout) перевіряють
+лише `secrets.RELEASE_SIGNING_KEY != ''` - true/false, не значення - і зупиняються, поки ключ є секретом репозиторію;
+`make-release-signing-key.sh` (ротація) кладе ключ у environment; `setup-repository.sh` переносить наявний ключ.
 
 ## Наслідки
 
