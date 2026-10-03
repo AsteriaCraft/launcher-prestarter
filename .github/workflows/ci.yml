@@ -68,7 +68,7 @@ jobs:
       - name: Tools (shellcheck, bats, actionlint, cargo-deny; pinned and checksummed)
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends shellcheck bats
+          sudo apt-get install -y -q --no-install-recommends shellcheck bats python3-yaml
           mkdir -p "$RUNNER_TEMP/bin"
           curl -fsSL -o "$RUNNER_TEMP/actionlint.tgz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
@@ -90,6 +90,8 @@ jobs:
         run: shellcheck scripts/*.sh scripts/ci/*.sh scripts/smoke/*.sh
       - name: actionlint
         run: actionlint
+      - name: Called workflows get the permissions they ask for (publish.yml runs only on release)
+        run: python3 scripts/ci/check-workflow-permissions.py .github/workflows
       - name: bats
         run: bats tests/scripts
       - name: Release gate (version, changelog, release notes)
