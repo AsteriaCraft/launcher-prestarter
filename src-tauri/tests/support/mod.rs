@@ -356,6 +356,13 @@ impl Fixture {
         Self { dir, store, java_dir, server: Server::http() }
     }
 
+    /// The store under `folder`, the way a Windows user name puts it into the profile; the rest as [`Fixture::new`].
+    pub fn with_store_in(tag: &str, folder: &str) -> Self {
+        let mut fixture = Self::new(tag);
+        fixture.store = fixture.dir.path().join(folder).join("store");
+        fixture
+    }
+
     /// Serves an API answer and the archive for `version`.
     pub fn serve_jre(&self, version: &str) {
         let archive = jre_archive(version);

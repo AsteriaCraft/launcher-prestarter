@@ -17,8 +17,12 @@ pub enum ErrorKind {
     EmbeddedCorrupt,
     MissingLibs,
     LaunchFailed,
-    /// Windows: the jar or the JRE lies under a name the ANSI code page cannot write, so Java would get `?` instead.
+    /// Windows: the jar lies under a name the ANSI code page cannot write, so Java would get `?` instead. Moving the
+    /// file to another folder helps.
     PathEncoding,
+    /// Windows: the prestarter's own store (the JRE) lies under such a name - it is in the user profile, so usually
+    /// the Windows user name has those letters. Moving the file cannot help; only the code page (or UTF-8) can.
+    StorePathEncoding,
     WrapperTooOld,
     Internal,
 }
@@ -29,7 +33,7 @@ impl ErrorKind {
             ErrorKind::JreDownload | ErrorKind::JreInstall | ErrorKind::NoSpace => 3,
             ErrorKind::JarDownload | ErrorKind::JarCorrupt | ErrorKind::EmbeddedCorrupt => 4,
             ErrorKind::MissingLibs => 5,
-            ErrorKind::LaunchFailed | ErrorKind::PathEncoding => 6,
+            ErrorKind::LaunchFailed | ErrorKind::PathEncoding | ErrorKind::StorePathEncoding => 6,
             ErrorKind::WrapperTooOld => 7,
             ErrorKind::Store | ErrorKind::Internal => 10,
         }
@@ -47,6 +51,7 @@ impl ErrorKind {
             ErrorKind::MissingLibs => "error.missingLibs",
             ErrorKind::LaunchFailed => "error.launchFailed",
             ErrorKind::PathEncoding => "error.pathEncoding",
+            ErrorKind::StorePathEncoding => "error.storePathEncoding",
             ErrorKind::WrapperTooOld => "error.wrapperTooOld",
             ErrorKind::Internal => "error.internal",
         }
@@ -55,7 +60,13 @@ impl ErrorKind {
     /// Whether "Try again" can help (a network hiccup can pass; a damaged file, an old wrapper or a folder name Java
     /// cannot read cannot).
     pub fn retryable(self) -> bool {
-        !matches!(self, ErrorKind::EmbeddedCorrupt | ErrorKind::WrapperTooOld | ErrorKind::PathEncoding)
+        !matches!(
+            self,
+            ErrorKind::EmbeddedCorrupt
+                | ErrorKind::WrapperTooOld
+                | ErrorKind::PathEncoding
+                | ErrorKind::StorePathEncoding
+        )
     }
 }
 
@@ -128,6 +139,7 @@ mod tests {
         assert_eq!(ErrorKind::MissingLibs.exit_code(), 5);
         assert_eq!(ErrorKind::LaunchFailed.exit_code(), 6);
         assert_eq!(ErrorKind::PathEncoding.exit_code(), 6);
+        assert_eq!(ErrorKind::StorePathEncoding.exit_code(), 6);
         assert_eq!(ErrorKind::WrapperTooOld.exit_code(), 7);
         assert_eq!(ErrorKind::Internal.exit_code(), 10);
     }
@@ -154,6 +166,7 @@ mod tests {
         assert!(!ErrorKind::EmbeddedCorrupt.retryable());
         assert!(!ErrorKind::WrapperTooOld.retryable());
         assert!(!ErrorKind::PathEncoding.retryable());
+        assert!(!ErrorKind::StorePathEncoding.retryable());
     }
 
     #[test]
@@ -163,5 +176,22 @@ mod tests {
         assert!(text.contains(r"D:\Ігри\Asterium.exe"), "{text}");
         assert!(text.contains(r"C:\Games\Asterium"), "{text}");
         assert!(text.ends_with("Error code: 6"), "{text}");
+    }
+
+    /// The store lies in the user profile, so moving Asterium cannot help: in every language the sentence names the
+    /// folder and the two settings that do help (the code page, or UTF-8), and never sends the player to C:\Games.
+    #[test]
+    fn a_store_java_cannot_read_never_says_move_asterium() {
+        let store = r"C:\Users\Максим\AppData\Local\Asterium\Prestarter\jre";
+        for lang in crate::i18n::ALL {
+            let text = FlowError::new(ErrorKind::StorePathEncoding, "x").param("path", store).message(lang);
+            assert!(text.contains(store), "{}: {text}", lang.code());
+            assert!(!text.contains(r"C:\Games"), "{}: {text}", lang.code());
+            assert!(text.contains("UTF-8"), "{}: {text}", lang.code());
+            let code = i18n::t(lang, "error.code", &[("code", "6")]);
+            assert!(text.ends_with(&code), "{}: {text}", lang.code());
+        }
+        let en = FlowError::new(ErrorKind::StorePathEncoding, "x").param("path", store).message(Lang::En);
+        assert!(en.contains("Moving Asterium to another folder will not help"), "{en}");
     }
 }

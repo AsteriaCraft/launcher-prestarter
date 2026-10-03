@@ -39,6 +39,7 @@
   "error.missingLibsUnknown": "Launcherowi brakuje bibliotek systemowych: {libraries}.",
   "error.launchFailed": "Launcher się nie uruchomił.",
   "error.pathEncoding": "Java nie może otworzyć „{path}”: nazwa zawiera litery, których nie zna język Windows dla programów bez Unicode. Przenieś Asterium do folderu z samymi literami łacińskimi (na przykład C:\\Games\\Asterium) albo zmień w Windows „Język dla programów nieobsługujących standardu Unicode”.",
+  "error.storePathEncoding": "Java nie może otworzyć folderu danych Asterium „{path}”: nazwa Twojego folderu użytkownika Windows zawiera litery, których nie zna język Windows dla programów bez Unicode. Przeniesienie Asterium do innego folderu nie pomoże. Zmień w Windows „Język dla programów nieobsługujących standardu Unicode” na język Twojej nazwy użytkownika albo włącz tam UTF-8 (beta), a potem uruchom komputer ponownie.",
   "error.wrapperTooOld": "Ta wersja Asterium jest nieaktualna. Pobierz nową ze strony.",
   "error.store": "Nie udało się utworzyć folderu Asterium: {path}.",
   "error.internal": "Wystąpił nieoczekiwany błąd.",

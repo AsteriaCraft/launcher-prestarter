@@ -316,6 +316,54 @@ fn a_jar_under_a_name_java_cannot_read_is_refused_before_any_download() {
     assert_eq!(fx.runs(), 0);
 }
 
+/// The store (the JRE) under a name the ANSI code page cannot write - a Windows user name in letters the "Language for
+/// non-Unicode programs" does not have. Moving Asterium cannot help there, so the refusal names the store and never
+/// says "move Asterium", even when the jar's own folder is fine. Elsewhere the same store just works.
+#[test]
+fn a_store_under_a_name_java_cannot_read_is_refused_without_moving_advice() {
+    let fx = Fixture::with_store_in("ansi-store", "Користувач \u{1F600}");
+    let exe = fx.embedded_exe();
+    let mut session = Session::open(fx.context(exe, "stay", &[], false)).unwrap();
+    let plan = session.plan();
+    if prestarter_lib::platform::ansi_code_page().is_some_and(|code_page| code_page != 65001) {
+        match plan {
+            Plan::Fail(err) => {
+                assert_eq!(err.kind, ErrorKind::StorePathEncoding);
+                assert_eq!(err.exit_code(), 6);
+                assert!(!err.kind.retryable());
+                let text = err.message(prestarter_lib::i18n::Lang::En);
+                assert!(text.contains(&fx.store.join("jre").display().to_string()), "{text}");
+                assert!(text.contains("Moving Asterium to another folder will not help"), "{text}");
+                assert!(!text.contains(r"C:\Games"), "{text}");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    } else {
+        assert!(matches!(plan, Plan::Window(_)), "{plan:?}");
+    }
+    assert!(fx.server.hits().is_empty());
+    assert_eq!(fx.runs(), 0);
+}
+
+/// Both the jar's folder and the store under such names: the store's sentence wins, because the setting it names
+/// fixes both, while moving the file would only lead to the store's refusal next.
+#[test]
+fn a_bad_store_is_named_before_a_bad_jar_folder() {
+    let fx = Fixture::with_store_in("ansi-both", "Користувач \u{1F600}");
+    let exe = fx.embedded_exe_in("Ігри \u{1F600}");
+    let mut session = Session::open(fx.context(exe, "stay", &[], false)).unwrap();
+    let plan = session.plan();
+    if prestarter_lib::platform::ansi_code_page().is_some_and(|code_page| code_page != 65001) {
+        match plan {
+            Plan::Fail(err) => assert_eq!(err.kind, ErrorKind::StorePathEncoding, "{err}"),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    } else {
+        assert!(matches!(plan, Plan::Window(_)), "{plan:?}");
+    }
+    assert_eq!(fx.runs(), 0);
+}
+
 #[test]
 fn the_appimage_environment_never_reaches_the_launcher() {
     let fx = Fixture::new("appimage");

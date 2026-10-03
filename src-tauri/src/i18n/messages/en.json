@@ -39,6 +39,7 @@
   "error.missingLibsUnknown": "The launcher needs system libraries that are missing: {libraries}.",
   "error.launchFailed": "The launcher did not start.",
   "error.pathEncoding": "Java cannot open “{path}”: the name has letters that the Windows language for non-Unicode programs cannot write. Move Asterium to a folder with Latin letters only (for example, C:\\Games\\Asterium), or change “Language for non-Unicode programs” in Windows.",
+  "error.storePathEncoding": "Java cannot open the Asterium data folder “{path}”: your Windows user folder has letters that the Windows language for non-Unicode programs cannot write. Moving Asterium to another folder will not help. In Windows, set “Language for non-Unicode programs” to the language of your user name, or turn on UTF-8 there (beta), then restart the computer.",
   "error.wrapperTooOld": "This version of Asterium is out of date. Download the new one from the website.",
   "error.store": "The Asterium folder could not be created: {path}.",
   "error.internal": "Something unexpected went wrong.",

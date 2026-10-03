@@ -5,6 +5,8 @@
 # 6, the sentence that says what to do, nothing downloaded, Java never started.
 #   1. no-WebView mode: the sentence goes to the log, the exit code is read directly
 #   2. with the window: a screenshot of the error as the player sees it (the window waits for the player; stopped)
+#   3. the file in an ASCII folder, the store under such a name (as a Windows user name puts it into the profile):
+#      the refusal names the store and does not tell the player to move Asterium, which could not help
 #
 # Usage: smoke-ansi-path.sh <raw Prestarter.exe> <label>     (Needs dist/fixtures/FxProbe.jar.)
 set -euo pipefail
@@ -60,4 +62,24 @@ wait "$pid" 2>/dev/null || true
 collect_store "$store" "$label/window"
 [ "$WINDOW_SHOWN" = 1 ] || fail "[$label] the error window's page never reported ready"
 grep -q "PathEncoding" "$SMOKE_OUT/$label/window/prestarter-1.log" || fail "[$label] the window run did not refuse"
+
+log "[$label] the store under a user name the code page cannot write, the file in an ASCII folder"
+user_store="$tmp/Користувач/AppData/Local/Asterium/Prestarter"
+ascii_exe="$tmp/ascii/Asterium.exe"
+mkdir -p "$tmp/ascii" "$tmp/Користувач"
+cp "$exe" "$ascii_exe"
+ASTERIUM_PRESTARTER_STORE="$(native_path "$user_store")" \
+  WEBVIEW2_BROWSER_EXECUTABLE_FOLDER="$(native_path "$tmp/no-webview2")" "$ascii_exe" &
+pid=$!
+wait_pid "$pid" 120 || fail "[$label] the prestarter did not exit in 2 minutes (store case)"
+collect_store "$user_store" "$label/store"
+[ "$EXIT_CODE" = 6 ] || fail "[$label] store case: exit code $EXIT_CODE, expected 6 (logs in $SMOKE_OUT/$label/store)"
+store_log="$SMOKE_OUT/$label/store/prestarter-1.log"
+grep -q "StorePathEncoding (exit 6): the ANSI code page $code_page cannot write" "$store_log" \
+  || fail "[$label] store case: the log does not name the store's refusal"
+grep -q "Moving Asterium to another folder will not help" "$store_log" \
+  || fail "[$label] store case: the player's sentence was not the store's"
+if grep -qF 'C:\Games' "$store_log"; then fail "[$label] store case: the sentence tells the player to move Asterium"; fi
+[ -z "$(ls -A "$user_store/jre" 2>/dev/null)" ] || fail "[$label] store case: Java was downloaded although the start was refused"
+log "[$label] the store's refusal names the store and the code page, not the file's folder"
 log "[$label] OK"
