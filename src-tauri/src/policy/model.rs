@@ -90,7 +90,11 @@ mod tests {
         assert_eq!(policy.jar_url, crate::jar::DEFAULT_JAR_URL);
         assert_eq!(policy.java_feature, crate::jre::DEFAULT_FEATURE);
         assert_eq!(policy.latest_wrapper_version, None, "CI adds it per release");
-        assert!(policy.min_version().unwrap() <= Version::parse(env!("CARGO_PKG_VERSION")).unwrap());
+        // A release candidate of X counts as X for the minimum (policy::verdict), so 0.3.0-rc.1 builds may carry
+        // minWrapperVersion 0.3.0; anything above the build's own core version would lock it out.
+        let mut own = Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
+        own.pre = semver::Prerelease::EMPTY;
+        assert!(policy.min_version().unwrap() <= own, "minWrapperVersion is above this build ({own})");
     }
 
     #[test]
