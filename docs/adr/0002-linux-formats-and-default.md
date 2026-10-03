@@ -30,9 +30,15 @@
    (GNOME, KDE, Xfce) fontconfig, harfbuzz, fribidi, EGL і GLES2 вже є, а WebKitGTK 4.1 часто немає. Один файл
    показано поруч як «легший (6 МБ замість 80), якщо WebKitGTK 4.1 уже встановлено», з командою встановлення пакетів
    для Debian/Ubuntu, Fedora і Arch.
-3. **Мінімальна система - glibc 2.34** для обох форматів (обидва збираються на Ubuntu 22.04). Це Ubuntu 22.04+,
-   Debian 12+, Fedora 35+, RHEL/Alma/Rocky 9+, Linux Mint 21+, Arch. CI перевіряє стелю символів glibc у кожному
-   бінарнику (`objdump -T`), щоб випадкове оновлення збирача не підняло вимогу непомітно.
+3. **Мінімальна система: один файл - glibc 2.34, AppImage - glibc 2.35** (обидва збираються на Ubuntu 22.04;
+   виміряно на етапі Build, розділ нижче: бібліотеки WebKitGTK і cairo з Ubuntu 22.04, які вкладає AppImage, мають
+   символи `GLIBC_2.35`). Один файл: Ubuntu 22.04+, Debian 12+, Fedora 35+, RHEL/Alma/Rocky 9+, Linux Mint 21+, Arch.
+   AppImage: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+, Arch - **не** RHEL/Alma/Rocky 9 і Fedora 35:
+   там AppImage падає в динамічному завантажувачі ще до будь-якого повідомлення престартера, тож сайт показує для
+   нього «glibc 2.35+» і радить цим системам один файл із системним WebKitGTK 4.1
+   ([0011](0011-site-download-experience.md)). CI перевіряє стелю символів glibc у кожному бінарнику (`objdump -T`,
+   `build-linux.sh verify`), щоб випадкове оновлення збирача не підняло вимогу непомітно. (Початкова редакція цього
+   пункту казала «glibc 2.34 для обох»; рецензія етапу Gate, 2026-10-03, знайшла розбіжність з вимірюванням.)
 4. **TLS без OpenSSL.** Престартер переходить на rustls ([0007](0007-platform-stack-upgrade.md)), тож один файл
    більше не потребує `libssl.so.3`.
 5. **AppImage запускає jar з сховища і чистить середовище дочірнього процесу** ([0006](0006-launching-the-launcher.md)):

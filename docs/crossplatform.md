@@ -315,6 +315,7 @@ LauncherDownloadSchema = z.object({
   os: z.enum(LauncherPlatform),
   arch: z.enum(LauncherArch),
   format: z.enum(LauncherFormat),
+  minimumOs: z.enum(LauncherMinimumOs),                           // свого формату: AppImage glibc-2.35, один файл glibc-2.34
   recommended: z.boolean(),                                       // типовий файл своєї групи (ОС, архітектура)
   fileName: z.string().min(1).max(128),
   url: MediaUrlSchema,                                            // https, origin лаунчера
