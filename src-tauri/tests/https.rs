@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicBool;
 use prestarter_lib::jar::fetch::{FetchError, fetch_copy};
 use prestarter_lib::net::client::{self, Roots};
 use prestarter_lib::net::download::{DownloadError, sha256_bytes};
-use prestarter_lib::policy::{self, POLICY_FILE};
+use prestarter_lib::policy::{self, MANIFEST_FILE, POLICY_FILE, SIGNATURE_FILE};
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use support::{Response, Server, TempDir, TestCa, test_jar};
@@ -108,5 +108,37 @@ fn the_signed_policy_is_fetched_and_verified_over_https() {
 
     // The real release key does not accept a manifest signed by another key.
     let err = policy::fetch(&client, &base, &prestarter_lib::policy::verify::builtin_keys()).unwrap_err();
+    assert!(err.to_string().contains("signature"), "{err}");
+}
+
+#[test]
+fn the_files_a_launchserver_mirrors_into_downloads_verify() {
+    // tests/fixtures/release/launchserver-mirror: what nginx served from downloads/ in the gravit-docker e2e (section X2)
+    // for v0.3.0 as this repository's release scripts write it (make-policy.sh, release-manifest.sh with publish.yml's
+    // asset list, sign-release.sh), installed and mirrored by AsteriumReleases 2.3.0, signed with that run's throwaway
+    // key (signing.pub.pem; its private half was never kept). See the README there.
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/release/launchserver-mirror");
+    let read = |name: &str| std::fs::read(dir.join(name)).unwrap();
+    let key = policy::verify::parse_public_key_pem(&String::from_utf8(read("signing.pub.pem")).unwrap()).unwrap();
+    let ca = TestCa::new();
+    let server = Server::https(ca.server.clone());
+    for name in [MANIFEST_FILE, SIGNATURE_FILE, POLICY_FILE] {
+        server.route(&format!("/downloads/{name}"), Response::bytes(read(name)));
+    }
+    let client = client::launcher_host(ca.roots()).unwrap();
+    let base = policy::base_for(&server.url("/Asterium.jar"));
+
+    let verified = policy::fetch(&client, &base, &[key]).unwrap();
+    assert_eq!(verified.release_version.to_string(), "0.3.0");
+    assert_eq!(verified.policy.min_wrapper_version, "0.3.0");
+    assert_eq!(verified.policy.latest_wrapper_version.as_deref(), Some("0.3.0"));
+    assert_eq!(verified.policy.jar_url, "https://launcher.asterium.pro/Asterium.jar");
+    assert_eq!(verified.policy_json.as_bytes(), read(POLICY_FILE).as_slice());
+    // The manifest describes every asset with os/arch/format/role (ADR 0009); the policy check reads only its own.
+    let manifest: serde_json::Value = serde_json::from_slice(&read(MANIFEST_FILE)).unwrap();
+    assert_eq!(manifest["assets"].as_array().unwrap().len(), 9);
+
+    // Signed by the e2e key, so the compiled-in release key refuses it.
+    let err = policy::fetch(&client, &base, &policy::verify::builtin_keys()).unwrap_err();
     assert!(err.to_string().contains("signature"), "{err}");
 }

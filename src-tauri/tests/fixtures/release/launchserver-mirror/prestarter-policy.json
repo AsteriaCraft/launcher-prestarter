@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "jarUrl": "https://launcher.asterium.pro/Asterium.jar",
+  "javaFeature": 25,
+  "minWrapperVersion": "0.3.0",
+  "downloadPage": "https://asterium.pro/launcher",
+  "latestWrapperVersion": "0.3.0"
+}

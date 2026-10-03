@@ -13,3 +13,4 @@
 *.bats text eol=lf
 # Signed bytes must stay byte-exact on every checkout (last, so it wins over *.json).
 src-tauri/tests/fixtures/release/release.json* binary
+src-tauri/tests/fixtures/release/launchserver-mirror/prestarter-* binary
