@@ -46,6 +46,14 @@ pub fn fetch_copy(
             downloaded.sha256
         );
         atomic::replace(&part, dest)?;
+        // macOS: a quarantined app's files may carry the attribute too (ADR 0003, item 7); Java reads the jar either
+        // way, but the copy stays as clean as the JRE. Logged, so the smoke test can tell what macOS did.
+        #[cfg(target_os = "macos")]
+        match crate::platform::macos::strip_quarantine(dest) {
+            Ok(0) => log::info!("no quarantine attribute on the launcher jar copy"),
+            Ok(_) => log::info!("removed com.apple.quarantine from the launcher jar copy"),
+            Err(err) => log::warn!("cannot strip quarantine from the launcher jar copy: {err}"),
+        }
         Ok(JarRecord { url: url.to_string(), sha256: downloaded.sha256, size: downloaded.size, fetched_at: Utc::now() })
     })();
     if result.is_err() {
