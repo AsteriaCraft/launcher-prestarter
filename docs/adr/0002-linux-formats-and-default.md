@@ -1,0 +1,92 @@
+# ADR 0002. Linux: один файл і AppImage, AppImage за замовчуванням
+
+- Статус: запропоновано (етап Design, 2026-10-02); уточнено на етапі Build (див. «Виміряно на етапі Build»)
+- Рішення власника: на Linux є і один виконуваний файл (бінарник з jar, потребує системного WebKitGTK), і AppImage
+  (самодостатній, для дистрибутивів без WebKitGTK).
+- Пов'язані: [0001](0001-artifact-matrix-and-jar-delivery.md), [0006](0006-launching-the-launcher.md),
+  [0011](0011-site-download-experience.md)
+
+## Контекст
+
+Виміряно на етапі Understand (Ubuntu 22.04 як збирач, Ubuntu 24.04 без GTK/WebKit як «голий» хост):
+
+- **Один файл (ELF).** 6 125 632 B. Найвищий символ glibc `GLIBC_2.34`. Потребує `libwebkit2gtk-4.1`,
+  `libjavascriptcoregtk-4.1`, `libsoup-3.0`, GTK 3, `libssl.so.3`/`libcrypto.so.3` (через native-tls). Без GTK
+  завантажувач завершує процес з кодом 127 ще до `main` (M1): подвійний клік не показує нічого, і престартер не може
+  про це сказати.
+- **AppImage.** 83 368 440 B, статичний runtime type 2 (libfuse3 вбудовано, libfuse2 не потрібен). Містить
+  webkit2gtk-4.1, GTK 3, soup 3, OpenSSL 3, ICU (246 МБ розпаковано). Хост має дати `libfontconfig.so.1`,
+  `libharfbuzz.so.0`, `libfribidi.so.0`, `libEGL.so.1`, `libGLESv2.so.2`, а також `/dev/fuse` і `fusermount3`
+  (інакше `APPIMAGE_EXTRACT_AND_RUN=1`). AppRun-хук примушує `GDK_BACKEND=x11` і `GTK_THEME=Adwaita:light`.
+- **Сам лаунчер (JavaFX) на будь-якому форматі** потребує системних GTK 3 і `libXtst.so.6` (M3), а медіа JavaFX -
+  `libasound.so.2`. AppImage їх не закриває: це вимога лаунчера, не обгортки.
+- Обидва формати при завантаженні з браузера втрачають біт виконання.
+
+## Рішення
+
+1. **Обидва формати в кожному релізі для x86_64 і aarch64.** Один файл збирає LaunchServer (варіанти `LINUX_X86_64`,
+   `LINUX_ARM64`), AppImage - CI ([0001](0001-artifact-matrix-and-jar-delivery.md)).
+2. **За замовчуванням сайт пропонує AppImage.** Він працює на більшій кількості систем: на типовому десктопі
+   (GNOME, KDE, Xfce) fontconfig, harfbuzz, fribidi, EGL і GLES2 вже є, а WebKitGTK 4.1 часто немає. Один файл
+   показано поруч як «легший (6 МБ замість 80), якщо WebKitGTK 4.1 уже встановлено», з командою встановлення пакетів
+   для Debian/Ubuntu, Fedora і Arch.
+3. **Мінімальна система: один файл - glibc 2.34, AppImage - glibc 2.35** (обидва збираються на Ubuntu 22.04;
+   виміряно на етапі Build, розділ нижче: бібліотеки WebKitGTK і cairo з Ubuntu 22.04, які вкладає AppImage, мають
+   символи `GLIBC_2.35`). Один файл: Ubuntu 22.04+, Debian 12+, Fedora 35+, RHEL/Alma/Rocky 9+, Linux Mint 21+, Arch.
+   AppImage: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 21+, Arch - **не** RHEL/Alma/Rocky 9 і Fedora 35:
+   там AppImage падає в динамічному завантажувачі ще до будь-якого повідомлення престартера, тож сайт показує для
+   нього «glibc 2.35+» і радить цим системам один файл із системним WebKitGTK 4.1
+   ([0011](0011-site-download-experience.md)). CI перевіряє стелю символів glibc у кожному бінарнику (`objdump -T`,
+   `build-linux.sh verify`), щоб випадкове оновлення збирача не підняло вимогу непомітно. (Початкова редакція цього
+   пункту казала «glibc 2.34 для обох»; рецензія етапу Gate, 2026-10-03, знайшла розбіжність з вимірюванням.)
+4. **TLS без OpenSSL.** Престартер переходить на rustls ([0007](0007-platform-stack-upgrade.md)), тож один файл
+   більше не потребує `libssl.so.3`.
+5. **AppImage запускає jar з сховища і чистить середовище дочірнього процесу** ([0006](0006-launching-the-launcher.md)):
+   жодна змінна, що вказує в `$APPDIR`, і жодна з ~25 змінних AppRun (виміряно в A5) не доходить до JVM лаунчера і
+   до Minecraft.
+6. **Інструкції на сайті і в FAQ:** `chmod +x` (або «Дозволити виконання» у властивостях файла), FUSE для AppImage
+   і `--appimage-extract-and-run` як обхід, пакети для одного файла, пакети JavaFX (`libgtk-3-0`, `libxtst6`,
+   `libasound2`) для обох.
+7. **Wayland.** AppImage працює через XWayland (його хук). Один файл працює нативно на Wayland; патч tao (Wayland
+   header bar) прибирається оновленням Tauri ([0007](0007-platform-stack-upgrade.md)), і CI робить знімок вікна під
+   weston у headless-режимі.
+
+## Наслідки
+
+- Два артефакти на архітектуру - більше рядків у таблиці завантажень і більше тестів. Варіант оновлення в них різний,
+  тож вони не заважають один одному на сервері.
+- Гравець, який узяв один файл без WebKitGTK, побачить нічого (код 127). Сайт за замовчуванням дає AppImage і
+  показує вимоги одного файла поруч з кнопкою.
+- AppImage 83 МБ завантажується з LaunchServer (через Cloudflare, без кешу). Це одноразово: оновлення лаунчера
+  в AppImage - це лише jar.
+
+## Розглянуті варіанти
+
+- Лише AppImage. Відкинуто рішенням власника.
+- Flatpak. Окремий канал розповсюдження (Flathub, рев'ю), пісочниця заважає лаунчеру писати в домашній каталог і
+  запускати Java з `~/.local`. Не зараз.
+- `.deb`/`.rpm` (Tauri їх уміє). Тягнуть залежності пакетним менеджером, але потребують root і окремих репозиторіїв
+  для оновлень обгортки. Не зараз; можна додати пізніше без змін в архітектурі.
+- Статично зібраний один файл без WebKitGTK (власний UI на чомусь іншому). Суперечить вимозі «престартер на Tauri».
+
+## Перевірка
+
+- CI: `ubuntu-22.04` і `ubuntu-22.04-arm` збирають обидва формати; smoke під Xvfb для кожного: GUI → справжній
+  Liberica API → `java -jar` → маркер `Hello.jar`; для AppImage перевірка, що в середовищі дочірнього процесу немає
+  `APPDIR`, `APPIMAGE`, `GDK_BACKEND` та інших змінних зі списку.
+- Контейнер «голий Ubuntu 24.04» (як M1/M2 в Understand): AppImage з мінімальним набором бібліотек працює, один файл
+  виходить з кодом 127 (зафіксована поведінка, на неї посилається FAQ).
+- weston headless: знімок вікна одного файла на Wayland без патча tao.
+
+## Виміряно на етапі Build (2026-10-02, CI 37046721983)
+
+- Один файл: `GLIBC_2.34` (x86_64 і aarch64, `objdump -T`), без `libssl`/`libcrypto` (`readelf -d`); серед
+  NEEDED тепер і `libdbus-1.so.3` (Tauri). 8 443 200 B (x86_64), 7 764 464 B (aarch64).
+- **AppImage потребує glibc 2.35**, а не 2.34: `libwebkit2gtk-4.1.so.0`, `libjavascriptcoregtk-4.1.so.0` і
+  `libcairo.so.2` з Ubuntu 22.04 мають символи `GLIBC_2.35`. Отже AppImage працює на Ubuntu 22.04+, Debian 12+,
+  Fedora 36+, Mint 21+, Arch, але не на RHEL/Alma/Rocky 9 і Fedora 35 (там - один файл з системним WebKitGTK).
+  Нижчу межу дала б лише збірка на старішій базі, де немає WebKitGTK 4.1, тож межа 2.35 лишається; CI друкує її
+  щоразу (`build-linux.sh verify`). Сайт показує для AppImage «glibc 2.35+» ([0011](0011-site-download-experience.md)).
+- AppImage: 82 487 800 B (x86_64), 80 468 488 B (aarch64), зібрано з `--network none`.
+- AppImage бере з системи й `libGL.so.1` (разом з EGL і GLES: бібліотеки графічного драйвера, їх linuxdeploy ніколи
+  не вкладає). Набір M2 для «голого» контейнера тепер містить `libgl1`; на будь-якому робочому столі вона є.

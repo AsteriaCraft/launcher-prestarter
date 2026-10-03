@@ -1,0 +1,16 @@
+# Shell scripts run in bash on Linux CI and in Git Bash on Windows: keep LF (core.autocrlf=true would break them).
+*.sh text eol=lf
+*.yml text eol=lf
+# Sources, fixtures and the policy: LF everywhere, so include_str!/include_bytes! read the same bytes on Windows.
+*.rs text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.java text eol=lf
+*.svelte text eol=lf
+*.ts text eol=lf
+*.toml text eol=lf
+*.bats text eol=lf
+# Signed bytes must stay byte-exact on every checkout (last, so it wins over *.json).
+src-tauri/tests/fixtures/release/release.json* binary
+src-tauri/tests/fixtures/release/launchserver-mirror/prestarter-* binary

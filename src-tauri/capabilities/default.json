@@ -1,12 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "The prestarter window: events, the app version and window dragging. Opening files and pages goes through Rust commands that only open our own logs folder and https pages.",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default",
-    "core:window:allow-start-dragging",
-    "core:window:allow-minimize"
+    "core:window:allow-start-dragging"
   ]
 }

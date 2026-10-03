@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "repo": "AsteriaCraft/launcher-prestarter",
+  "component": "prestarter",
+  "tag": "v0.3.0",
+  "version": "0.3.0",
+  "channel": "stable",
+  "commit": "8db5a4c5836e9f55864badfa68e23f8f6ce4054b",
+  "assets": [
+    {"name": "Prestarter.exe", "size": 9381376, "sha256": "acecd69320a0ee2fd927ac339b84024cdc4d08bd567eaa16c286fc9df07fb6b5", "os": "windows", "arch": "x86_64", "format": "exe", "role": "prestarter"},
+    {"name": "Prestarter-windows-aarch64.exe", "size": 8237056, "sha256": "7db5e7f61366e526bb095a179e78d6db56cc50191a4bbb45288646bff5e0a1e5", "os": "windows", "arch": "aarch64", "format": "exe", "role": "prestarter"},
+    {"name": "Prestarter-linux-x86_64", "size": 8450624, "sha256": "1ed35e5d86a76ce74b53870ef4c6c60354cf73f1db95f49a43cb54c6d03c32a5", "os": "linux", "arch": "x86_64", "format": "elf", "role": "prestarter"},
+    {"name": "Prestarter-linux-aarch64", "size": 7768560, "sha256": "00439f851ef7b2b1b37afd16a9e73ffcec584ddd617f63f8e5b4c89687603332", "os": "linux", "arch": "aarch64", "format": "elf", "role": "prestarter"},
+    {"name": "Asterium-linux-x86_64.AppImage", "size": 82491896, "sha256": "b297d3d08cb6a2d574164c64240f5970111f444d4bfc8ed9af831562e00aabc7", "os": "linux", "arch": "x86_64", "format": "appimage", "role": "download"},
+    {"name": "Asterium-linux-aarch64.AppImage", "size": 80472584, "sha256": "1cdf2d71c3947208371b804dd53e27ac18caf18ff9a9da174167fe9a88ffb632", "os": "linux", "arch": "aarch64", "format": "appimage", "role": "download"},
+    {"name": "Asterium-macos-universal.dmg", "size": 7931774, "sha256": "da24bdafacdb65b2ff9785a556cab4782184835beea623d070484f6642245fac", "os": "macos", "arch": "universal", "format": "dmg", "role": "download"},
+    {"name": "release-notes.json", "size": 2553, "sha256": "430b9c4bcebac61bf27fc3c425f37546673b6ad5b01d72c2ceab6b47aef0f87f", "format": "json", "role": "notes"},
+    {"name": "prestarter-policy.json", "size": 215, "sha256": "5f6edeaec5092d771cf84dec69fba8ee0919a670daad2e909b92fccc376257ae", "format": "json", "role": "policy"}
+  ]
+}

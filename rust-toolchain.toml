@@ -1,0 +1,15 @@
+# One Rust for every machine and CI job (ADR 0007): the exact stable release, both components CI runs, and the std
+# of every target the prestarter ships for. Seven artifacts come from six Rust targets: macOS universal is lipo of
+# x86_64-apple-darwin and aarch64-apple-darwin, and each Linux target yields both the single file and the AppImage.
+[toolchain]
+channel = "1.98.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
+targets = [
+  "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+]

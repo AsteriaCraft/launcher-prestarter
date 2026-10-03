@@ -1,0 +1,51 @@
+# cargo deny check (ADR 0007, run in ci.yml): only crates.io, no known vulnerabilities, licenses we can ship.
+
+[graph]
+targets = [
+  "x86_64-pc-windows-msvc",
+  "aarch64-pc-windows-msvc",
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+  # proc-macro-error is unmaintained; it reaches us only as a compile-time proc macro of gtk-rs 0.18 (glib-macros),
+  # which Tauri's Linux stack (tauri, tao, muda, wry) pins. Nothing of it ships in the binary; it leaves with
+  # Tauri's move off gtk-rs 0.18. Re-check on every Tauri upgrade.
+  { id = "RUSTSEC-2024-0370", reason = "compile-time only, pinned by Tauri's gtk-rs 0.18 stack" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "Unicode-3.0",
+  "MPL-2.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = false
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
