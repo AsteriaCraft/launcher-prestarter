@@ -9,3 +9,7 @@ node_modules
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 target/rust-analyzer
+# Build outputs of scripts/ci and scripts/smoke
+/dist
+/.tools
+/smoke-out

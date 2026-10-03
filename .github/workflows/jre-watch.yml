@@ -1,0 +1,81 @@
+# Weekly JRE housekeeping (ADR 0004, 0005, 0009). GitHub runs schedules only from the default branch (`main`).
+#   fallback - regenerates src-tauri/src/jre/fallback.json (every archive checked against the API's size and sha1,
+#              then pinned by sha256) and opens a PR into main; a PR opened with GITHUB_TOKEN starts no pull_request
+#              run, so it dispatches ci.yml on the PR branch itself (workflow_dispatch from GITHUB_TOKEN does run)
+#   webkit   - opens an issue once Liberica's Windows ARM64 jre-full ships jfxwebkit.dll (switch to the native JRE)
+# Needs "Allow GitHub Actions to create and approve pull requests" (owner, once).
+# All actions are pinned to full commit SHAs (tag in the comment).
+name: jre-watch
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  fallback:
+    name: Refresh the fallback JRE table
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+      - name: Regenerate
+        run: bash scripts/update-jre-fallback.sh
+      - name: Open a PR when it changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if git diff --quiet -- src-tauri/src/jre/fallback.json; then
+            echo "fallback.json is current"
+            exit 0
+          fi
+          versions="$(jq -r '[.targets[].version] | unique | join(", ")' src-tauri/src/jre/fallback.json)"
+          branch="jre-fallback/$(date -u +%Y-%m-%d)"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "::notice::$branch already exists"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -m "jre: fallback table for Liberica $versions" -- src-tauri/src/jre/fallback.json
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "jre: fallback table for Liberica $versions" \
+            --body "Weekly refresh by jre-watch.yml: every archive was checked against the Liberica API's size and sha1, then pinned by sha256 (ADR 0005). CI runs through workflow_dispatch."
+          gh workflow run ci.yml --ref "$branch"
+
+  webkit:
+    name: WebKit in the Windows ARM64 JRE
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check jfxwebkit.dll
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set +e
+          python3 scripts/ci/jre_webkit_watch.py
+          rc=$?
+          set -e
+          [ "$rc" = 1 ] && exit 0
+          [ "$rc" = 0 ] || exit "$rc"
+          title="Liberica ships JavaFX WebKit for Windows ARM64: switch to the native JRE"
+          if [ "$(gh issue list --state open --search "$title in:title" --json number --jq length)" = 0 ]; then
+            gh issue create --title "$title" --body "jre-watch.yml found jfxwebkit.dll in Liberica's Windows aarch64 jre-full. ADR 0004 step 4: switch jre::catalog to the native JRE, enable EXE_WINDOWS_ARM64 on the LaunchServer, and offer Asterium_arm64.exe on the site, together."
+          fi

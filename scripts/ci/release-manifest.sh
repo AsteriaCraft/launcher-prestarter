@@ -7,13 +7,15 @@
 #                            stable release when it was built as a pre-release.
 #
 # Usage: release-manifest.sh <dist-dir> <owner/repo> <component> <version> <commit-sha> <asset>...
+#   asset: <name>, or <name>:<os>:<arch>:<format>:<role> to add those optional fields to its entry ("-" = leave one
+#   out), e.g. Prestarter-linux-aarch64:linux:aarch64:elf:prestarter. Plain names give the same output as before.
 #   version: MAJOR.MINOR.PATCH[-PRERELEASE] (no leading "v"); the tag is v<version>; a -PRERELEASE suffix makes the
 #   channel "prerelease", otherwise "stable".
 # The same script is used by every Asterium release workflow (copy it verbatim into other repositories).
 set -euo pipefail
 
 if [ "$#" -lt 6 ]; then
-  echo "usage: $0 <dist-dir> <owner/repo> <component> <version> <commit-sha> <asset>..." >&2
+  echo "usage: $0 <dist-dir> <owner/repo> <component> <version> <commit-sha> <asset>[:os:arch:format:role]..." >&2
   exit 2
 fi
 dist="$1"; repo="$2"; component="$3"; version="$4"; commit="$5"; shift 5
@@ -31,14 +33,28 @@ case "$version" in *-*) channel=prerelease ;; *) channel=stable ;; esac
 cd "$dist"
 : > SHA256SUMS.txt
 entries=()
-for asset in "$@"; do
+meta_re='^[a-z0-9][a-z0-9_-]{0,31}$'
+for spec in "$@"; do
+  # <name> or <name>:<os>:<arch>:<format>:<role>; "-" leaves a field out (ADR 0009).
+  # shellcheck disable=SC2034 # os, arch and format are read through ${!field} below
+  IFS=: read -r asset os arch format role extra <<< "$spec"
+  if [ "$spec" != "$asset" ] && { [ -n "${extra:-}" ] || [ -z "${role:-}" ]; }; then
+    echo "invalid asset spec (want name or name:os:arch:format:role): $spec" >&2; exit 2
+  fi
+  meta=""
+  for field in os arch format role; do
+    value="${!field:-}"
+    [ -z "$value" ] || [ "$value" = "-" ] && continue
+    [[ "$value" =~ $meta_re ]] || { echo "invalid $field in $spec: $value" >&2; exit 2; }
+    meta+="$(printf ', "%s": "%s"' "$field" "$value")"
+  done
   [[ "$asset" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ && "$asset" != *..* ]] || { echo "invalid asset name: $asset" >&2; exit 2; }
   case "$asset" in release.json|release.json.sig|SHA256SUMS.txt) echo "reserved asset name: $asset" >&2; exit 2 ;; esac
-  [ -f "$asset" ] && [ ! -L "$asset" ] && [ -s "$asset" ] || { echo "missing or empty asset: $asset" >&2; exit 2; }
+  if [ ! -f "$asset" ] || [ -L "$asset" ] || [ ! -s "$asset" ]; then echo "missing or empty asset: $asset" >&2; exit 2; fi
   sha="$(sha256sum "$asset" | cut -d' ' -f1)"
   size="$(stat -c %s "$asset")"
   printf '%s  %s\n' "$sha" "$asset" >> SHA256SUMS.txt
-  entries+=("$(printf '    {"name": "%s", "size": %s, "sha256": "%s"}' "$asset" "$size" "$sha")")
+  entries+=("$(printf '    {"name": "%s", "size": %s, "sha256": "%s"%s}' "$asset" "$size" "$sha" "$meta")")
 done
 
 {

@@ -1,159 +1,100 @@
 <script lang="ts">
-    import "reset-css";
-    import { invoke } from "@tauri-apps/api/core";
-    import { listen } from "@tauri-apps/api/event";
-    import { getCurrentWindow } from "@tauri-apps/api/window";
-    import { onMount } from "svelte";
+  import "reset-css";
+  import "$lib/assets/css/global.scss";
 
-    import "$lib/assets/css/global.scss";
+  import { getVersion } from "@tauri-apps/api/app";
+  import { invoke } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { onDestroy, onMount, tick } from "svelte";
 
-    import { assets } from "$lib/assets";
+  import background from "$lib/assets/images/back.jpg";
+  import DownloadBlock from "$lib/components/ui/DownloadBlock.svelte";
+  import { commands, events, firstFrame } from "$lib/config/app";
+  import { translator, type Translator } from "$lib/i18n";
+  import type { Boot, FailurePayload, Notice, ProgressPayload, StagePayload } from "$lib/types/events";
+  import { whenPaintable } from "$lib/utils/paint";
+  import { initialState, reduce, type ViewEvent, type ViewState } from "$lib/utils/state";
 
-    import { appConfig, tauriCommands, tauriEvents } from "$lib/config/app";
-    import { DownloadTracker } from "$lib/utils/download";
-    import type {
-        ExtractProgressEvent,
-        DownloadProgressEvent,
-    } from "$lib/types/events";
-    import DownloadBlock from "$lib/components/ui/DownloadBlock.svelte";
+  let view: ViewState = $state(initialState);
+  let tr: Translator = $state(translator("en"));
+  let version = $state("");
+  let testMode = $state(false);
+  let ready = $state(false);
+  const unlisten: UnlistenFn[] = [];
 
-    // Application state
-    let lastSpeedUpdate = 0;
-    let error = "";
-    let speedMb: string = "";
-    let percentage: number = 0;
+  function dispatch(event: ViewEvent) {
+    view = reduce(view, event);
+  }
 
-    let done = false;
-    let running = false;
+  const call = (command: string, args?: Record<string, unknown>) =>
+    invoke(command, args).catch((err: unknown) => console.error(command, err));
 
-    // Loading stages
-    let loadingStage = "Loading modules...";
+  onMount(async () => {
+    const boot = await invoke<Boot>(commands.boot);
+    tr = translator(boot.lang);
+    testMode = boot.testMode;
+    document.documentElement.lang = boot.lang;
+    version = await getVersion();
 
-    const appWindow = getCurrentWindow();
-    const downloadTracker = new DownloadTracker();
+    unlisten.push(
+      await listen<StagePayload>(events.stage, (e) => dispatch({ type: "stage", stage: e.payload.stage })),
+      await listen<ProgressPayload>(events.progress, (e) =>
+        dispatch({ type: "progress", done: e.payload.done, total: e.payload.total, at: performance.now() }),
+      ),
+      await listen<Notice>(events.notice, (e) => dispatch({ type: "notice", notice: e.payload })),
+      await listen<FailurePayload>(events.failure, (e) => dispatch({ type: "failure", failure: e.payload })),
+      await listen(events.done, () => dispatch({ type: "done" })),
+    );
+    ready = true;
+    // Show the window once its first frame has what it paints (no white flash, no fallback font), then start the
+    // work. Not requestAnimationFrame: WebKit runs none in a hidden window, so on Linux and macOS it never fired.
+    await tick();
+    await whenPaintable(firstFrame.fonts, [background], firstFrame.timeoutMs);
+    call(commands.ready);
+  });
 
-    // Функции управления окном
-    const minimize = () => appWindow.minimize();
-    const close_application = () => invoke(tauriCommands.closeApp);
-
-    // Загрузка
-    async function startDownload() {
-        try {
-            console.log("Инициализация загрузки...");
-            error = "";
-            done = false;
-            running = false;
-            downloadTracker.reset();
-            speedMb = "";
-
-            const result = await invoke<string>(tauriCommands.startDownload);
-            console.log("Download started:", result || "success");
-        } catch (err) {
-            console.error("Download initialization error:", err);
-            error = String(err);
-            speedMb = "ERR";
-        }
-    }
-
-    // Add async/await for error handling
-    async function setupListeners() {
-        try {
-            await listen<DownloadProgressEvent>(
-                tauriEvents.downloadProgress,
-                (event) => {
-                    const now = Date.now();
-                    const current = event.payload.downloaded;
-                    const total = event.payload.total;
-
-                    // Set loading stage based on event type
-                    if (current > 0) {
-                        loadingStage = "Loading modules...";
-                    }
-
-                    // Update via DownloadTracker
-                    const result = downloadTracker.update(current, total);
-
-                    speedMb = result.speed;
-                    percentage = result.percentage;
-
-                    if (now - lastSpeedUpdate > 200) {
-                        lastSpeedUpdate = now;
-                    }
-                },
-            );
-
-            await listen<ExtractProgressEvent>(
-                tauriEvents.extractProgress,
-                (event) => {
-                    // Set loading stage based on event type
-                    if (event.payload.processed > 0) {
-                        loadingStage = "Installing modules...";
-                    }
-                    
-                    speedMb = "--";
-                    percentage = downloadTracker.percentageCalculation(
-                        event.payload.processed,
-                        event.payload.total,
-                    );
-
-                },
-            );
-            await listen<string>(tauriEvents.error, (event) => {
-                speedMb = "ERR";
-                error = event.payload;
-            });
-            await listen(tauriEvents.running, () => {
-                loadingStage = "Starting...";
-                running = true;
-            });
-            await listen(tauriEvents.done, () => {
-                done = true;
-                close_application();
-            });
-        } catch (err) {
-            console.error("Failed to setup listeners:", err);
-        }
-    }
-
-    onMount(() => {
-        setupListeners();
-        setTimeout(startDownload, appConfig.download.initialDelay);
-    });
+  onDestroy(() => unlisten.forEach((stop) => stop()));
 </script>
 
 <svelte:head>
-    <title>Asterium Craft</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asterium</title>
 </svelte:head>
 
 <div data-tauri-drag-region class="app">
-    <div class="noise"></div>
-    <div class="layout">
-        <DownloadBlock {error} {speedMb} {percentage} {loadingStage} />
-    </div>
+  {#if ready}
+    <DownloadBlock
+      {view}
+      {tr}
+      {version}
+      {testMode}
+      onRetry={() => {
+        dispatch({ type: "retry" });
+        call(commands.retry);
+      }}
+      onOpenLogs={() => call(commands.openLogs)}
+      onPlayNow={() => {
+        dispatch({ type: "playNow" });
+        call(commands.playNow);
+      }}
+      onOpenPage={(url) => call(commands.openPage, { url })}
+      onClose={() => call(commands.quit)}
+      onMinimize={() => call(commands.minimize)}
+    />
+  {/if}
 </div>
 
 <style lang="scss">
-    :global(.app) {
-        border-radius: 12px;
-        width: 100vw;
-        height: 100vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden;
-        position: relative;
-        background:
-            url("$lib/assets/images/back.jpg");
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-position: center;
-        font-family: "Inter", "Kharkiv", sans-serif;
-        color: $text-primary;
-    }
-    .layout {
-        width: 100%;
-        height: 100%;
-        position: relative;
-    }
+  :global(.app) {
+    border-radius: 12px;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+    background: url("$lib/assets/images/back.jpg");
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    font-family: "Inter", "Kharkiv", sans-serif;
+    color: $text-primary;
+  }
 </style>

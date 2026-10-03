@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "repo": "AsteriaCraft/launcher-prestarter",
+  "component": "prestarter",
+  "tag": "v0.2.0",
+  "version": "0.2.0",
+  "channel": "stable",
+  "commit": "8b9cd54532caac25102dc23280b50e8b22e69021",
+  "assets": [
+    {"name": "Prestarter.exe", "size": 4811776, "sha256": "447ce4f94db32e8a8d127d4d144c445ec45ae0332e02ce61529710eb9ccfca59"}
+  ]
+}

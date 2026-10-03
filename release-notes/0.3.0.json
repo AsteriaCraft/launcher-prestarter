@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "component": "prestarter",
+  "version": "0.3.0",
+  "date": "2026-10-03",
+  "notes": {
+    "uk": {
+      "added": [
+        "Asterium тепер працює на Linux (x64 і ARM64): окремий файл і AppImage.",
+        "Asterium для macOS: одна збірка для Intel і Apple Silicon у DMG з інструкцією першого запуску.",
+        "Під час оновлення Java можна натиснути «Грати зараз» і не чекати завантаження.",
+        "Інтерфейс українською, білоруською, польською, російською та англійською."
+      ],
+      "changed": [
+        "Java встановлюється швидше і надійніше: перевіряється кожен завантажений файл.",
+        "Asterium зберігає Java у власній папці й більше не ділить її з іншими лаунчерами."
+      ],
+      "fixed": [
+        "На комп'ютерах з ARM більше не ставиться застаріла Java.",
+        "Якщо лаунчер не може запуститися, Asterium показує причину і що зробити, а не закривається мовчки.",
+        "Якщо Windows не може передати Java назву папки з Asterium (наприклад, кирилицю при англійській мові системи), Asterium пояснює, як це виправити."
+      ]
+    },
+    "en": {
+      "added": [
+        "Asterium now runs on Linux (x64 and ARM64): a single file and an AppImage.",
+        "Asterium for macOS: one build for Intel and Apple Silicon in a DMG with first-start instructions.",
+        "While Java updates you can press \"Play now\" instead of waiting for the download.",
+        "The interface speaks Ukrainian, Belarusian, Polish, Russian and English."
+      ],
+      "changed": [
+        "Java installs faster and more reliably: every downloaded file is checked.",
+        "Asterium keeps Java in its own folder and no longer shares it with other launchers."
+      ],
+      "fixed": [
+        "ARM computers no longer get an outdated Java.",
+        "If the launcher cannot start, Asterium shows why and what to do instead of closing silently.",
+        "If Windows cannot pass the name of Asterium's folder to Java (for example Cyrillic on an English system), Asterium explains how to fix it."
+      ]
+    }
+  }
+}
