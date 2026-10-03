@@ -5,7 +5,7 @@ and the project uses [Semantic Versioning](https://semver.org/). Player-facing n
 `release-notes/<version>.json` (uk, en); a release is refused while its heading here says "Unreleased"
 (`scripts/ci/release-checks.sh`).
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-10-03
 
 ### Added
 - Linux x86_64 and ARM64 builds: a single file (for the LaunchServer to append the launcher jar) and an AppImage.
