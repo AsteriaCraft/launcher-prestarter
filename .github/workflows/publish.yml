@@ -91,6 +91,10 @@ jobs:
     name: Build
     needs: version
     uses: ./.github/workflows/build.yml
+    # A called workflow gets at most what its caller job grants, and the workflow-wide default above is none:
+    # without this GitHub refuses to start the run (startup_failure of v0.3.0-rc.1, 2026-10-03).
+    permissions:
+      contents: read
     with:
       cache: false
 
@@ -135,6 +139,8 @@ jobs:
     name: Smoke
     needs: sign-macos
     uses: ./.github/workflows/smoke.yml
+    permissions:
+      contents: read
     with:
       macos-artifact: asterium-macos-release
 
