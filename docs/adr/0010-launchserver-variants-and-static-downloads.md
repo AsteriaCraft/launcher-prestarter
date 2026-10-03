@@ -210,3 +210,73 @@
 5. **Authenticode** (відкрите питання 5): README не обіцяє «увімкнути `OSSLSignCode`, коли буде сертифікат»: з
    2023-06-01 ключ сертифіката підпису коду має бути в HSM, тож шлях - PKCS#11 до хмарного HSM
    (`osslsigncode -pkcs11module`) або jsign з хмарним KMS; підпис з таким ключем доводиться в e2e до купівлі.
+
+## Виміряно на етапі Integration (2026-10-03)
+
+Справжні артефакти CI-прогону престартера 37058653061 (8db5a4c), образ LaunchServer лейну server (gravit-docker
+`feat/prestarter-crossplatform`), рантайм Asterium 3.1.1 (останній реліз), e2e `modules/asterium-releases/e2e/run-e2e.sh`
+з `XPLAT_FILES` і `PRESTARTER_REPO`.
+
+**Що лейн server зробив інакше, ніж у тексті вище** (тут ці пункти мають пріоритет):
+
+1. Актив без `since` перелічується в конфігу Prestarter ще до встановлення, тож новий том не потребує другого рестарту.
+2. `since: v0.3.0` покриває й `v0.3.0-rc.x`.
+3. Невідомий ключ в активі - помилка конфігу (модуль вимкнено на цей старт, `config/Prestarter/Config.json` не
+   чіпається), не попередження.
+4. `clientSupport` бере платформу JVM клієнта, тож Windows на ARM (JRE x64, [0004](0004-windows-arm64-uses-x64-jre.md))
+   - це рядок `windows/x86_64`.
+5. Дзеркальні файли (`prestarter-release.json`, `.sig`, `prestarter-policy.json`) не перелічуються в `downloads.json`.
+
+**Реліз, як його пише `publish.yml`.** З `PRESTARTER_REPO` e2e збирає v0.3.0 скриптами цього репозиторію
+(`release-notes/0.3.0.json`, `make-policy.sh`, `release-manifest.sh` зі списком активів, узятим з `publish.yml`,
+`sign-release.sh`), лише з ключем e2e замість ключа релізів, і фейковий GitHub публікує цю теку байт у байт. Модуль
+приймає метадані (`os`/`arch`/`format`/`role` кожного активу), ставить усі сім файлів, дзеркалить `release.json`, його
+підпис і політику без змін, а `downloads.json` бере `os`/`arch`/`format` саме з цього маніфесту. Кожен зібраний файл
+(`Launcher.exe`, `Launcher_linux`, `Launcher_linux_arm64`) - це сирий престартер і `Launcher.jar` байт у байт, і
+`java -jar` кожного проходить самоперевірку підпису Gravit. Дзеркало з цього прогону лежить у
+`src-tauri/tests/fixtures/release/launchserver-mirror/`, і тест `the_files_a_launchserver_mirrors_into_downloads_verify`
+перевіряє його верифікатором самого престартера (той самий шлях, яким AppImage і `.app` читають політику).
+
+**Справжні престартери проти цього LaunchServer** (розділ XR e2e: Ubuntu 24.04 у контейнері, Xvfb, користувач без
+прав, новий домашній каталог для кожного формату, мережевий простір LaunchServer): один файл і AppImage, x86_64 нативно
+й aarch64 під QEMU. Файл, як його віддає nginx; Java з API BellSoft (`liberica-25`, `jre-full`); справжній лаунчер
+(рантайм 3.1.1) до екрана входу з методами входу цього LaunchServer; самооновлення Gravit після перезбирання: файл
+гравця дорівнює поданому байт у байт, біт виконання лишається, наступний старт - швидкий шлях з вбудованим jar; у
+AppImage оновлюється копія jar у сховищі, а сам AppImage не змінюється; середовище лаунчера з AppImage не має жодної
+змінної AppRun. Самооновлення там іде із затримкою на loopback (50 мс в кожен бік, під QEMU 500 мс): так гравець
+досягає LaunchServer через інтернет; без затримки рантайм губить оновлення (знахідка R1 нижче). Під QEMU AppImage
+aarch64 запускається з копії, у якій три байти магії `AI\x02` (байти 8-10 заголовка ELF) занулено: правило binfmt QEMU
+вимагає там нулів, ядро на справжньому ARM запускає файл релізу як є (smoke CI на `ubuntu-24.04-arm`).
+
+**Знахідки в рантаймі** (`asterium-launcher` v3.1.1; у гілці `release-3.1.2` код той самий; не престартер - усі
+формати й престартер 0.2.0 мають їх однаково):
+
+- **R1. Оновлення лаунчера губиться, коли LaunchServer відповідає раніше, ніж рантайм поставив callback.**
+  `JavaFXApplication.init()` викликає `LauncherBackendAPIHolder.getApi().init()` (він одразу питає оновлення й методи
+  входу), а `setCallback(backendCallbackService)` - лише в кінці `init()`. Якщо відповідь і завантаження нового файла
+  встигають раніше, `LauncherBackendImpl` викликає `callback.onShutdown()` на `null`: NPE, рантайм пише
+  `View load failed (runtime.service.error.generic)`, і старий лаунчер працює далі (або висить без вікна). Виміряно:
+  без затримки 10 з 10 стартів застарілого лаунчера не оновилися (усі з цим NPE); з 50 мс - 10 з 10 оновилися;
+  під QEMU (повільний комп'ютер) з 50 мс - теж NPE. Пропозиція: `setCallback` до `getApi().init()` (`onShutdown`
+  рантайму не потребує інших сервісів).
+- **R2. Взаємне блокування ініціалізації класів JavaFX на старті.** Потік `JavaFX Application Thread` у
+  `javafx.scene.Scene.<clinit>`, а потоки `fxml-N` (розбір FXML на старті, `fxmlPool`) створюють `Tooltip` і стоять у
+  `SceneHelper.<clinit>` - вікна немає ніколи, процес живе. Виміряно: 1 з 10 стартів актуального лаунчера (програмне
+  відображення в Xvfb); у прогонах XR - також на перезапуску після оновлення. Пропозиція: ініціалізувати
+  `javafx.scene.Scene` (і так `SceneHelper`) у `init()` до того, як `fxml`-пул почне розбір.
+- **R3. Оновлення, прийняте лаунчером, іноді не встановлюється.** `LauncherBackendImpl` ставить shutdown hook, який
+  записує новий файл, уже після `callback.onShutdown()`; рантайм на `onShutdown` одразу робить `Platform.exit()`, і
+  `LauncherEngine.main` доходить до `System.exit(0)`. У прогоні XR двічі з трьох стартів `launcher.log` мав
+  `LaunchServer requested shutdown (launcher update)` і `Launcher exiting (code 0)`, а файл лишився старим і новий
+  лаунчер не стартував; з перехопленим stdout (інші затримки) - 8 з 8 успішні. Механізм виведено з коду (hook
+  реєструється після початку виходу), стек не перехоплено. Пропозиція: рантайм сам встановлює оновлення в
+  `StdJavaRuntimeProvider.run()` (шлях `updatePath`, яким уже користується `OfflinePlay`), не покладаючись на hook Gravit.
+
+e2e не ховає цих знахідок: старт без вікна або без встановленого оновлення отримує дамп потоків
+(`desktop-player.sh dump` називає R1 і R2), рядок `NOTE` і ще один старт гравця (до трьох).
+
+**Windows локально не запускалось.** Без прав адміністратора немає окремого користувача, Windows Sandbox не
+встановлено, KVM у Docker Desktop немає (VM не підняти), а запуск на робочому столі власника заборонено. Престартер на
+справжньому Windows (x64 і ARM) перевіряє smoke CI; `Launcher.exe` з LaunchServer перевірено побайтово, через
+`java -jar` (самоперевірка підпису) і відповіддю самооновлення для `EXE_WINDOWS_X86_64` (до й після рестарту).
+Справжній лаунчер на Windows з цим LaunchServer наскрізь не запускався.
